@@ -1,0 +1,4 @@
+# ebert output folders
+*_understand/
+# transient
+.DS_Store
