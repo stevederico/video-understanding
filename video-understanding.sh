@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ebert — watch a video like a critic: extract frames + a timestamped SRT
+# video-understanding — watch a video like a critic: extract frames + a timestamped SRT
 # transcript, then hand off to an AI agent to review frames against the
 # transcript and write a full understanding of the video.
 #
@@ -7,16 +7,16 @@
 # Stage 2 (the agent):    reads frames + SRT, writes understanding.md.
 #
 # Usage:
-#   ebert.sh <video> [interval_seconds] [output_dir]
+#   video-understanding.sh <video> [interval_seconds] [output_dir]
 #
 # Self-bootstrapping: needs only ffmpeg + uv on the host. The STT engine and
 # model download themselves on first run via uvx — no compiler, cross-platform.
 #
 # Env overrides:
-#   EBERT_ENGINE    faster (default, cross-platform) | mlx (Apple Silicon fast path)
-#   EBERT_MODEL     default: large-v3-turbo
-#   EBERT_LANG      default: auto-detect (set e.g. en to skip detection)
-#   EBERT_DEVICE    faster engine only: auto (default) | cpu | cuda
+#   VU_ENGINE    faster (default, cross-platform) | mlx (Apple Silicon fast path)
+#   VU_MODEL     default: large-v3-turbo
+#   VU_LANG      default: auto-detect (set e.g. en to skip detection)
+#   VU_DEVICE    faster engine only: auto (default) | cpu | cuda
 #   FRAME_QUALITY   ffmpeg -q:v for JPEGs, 2(best)-31(worst), default 3
 #
 # Output tree (in <output_dir>):
@@ -29,12 +29,12 @@
 
 set -euo pipefail
 
-VIDEO="${1:?usage: ebert.sh <video> [interval_seconds] [output_dir]}"
+VIDEO="${1:?usage: video-understanding.sh <video> [interval_seconds] [output_dir]}"
 INTERVAL="${2:-5}"
 OUTDIR="${3:-${VIDEO%.*}_understand}"
-ENGINE="${EBERT_ENGINE:-faster}"
-MODEL="${EBERT_MODEL:-large-v3-turbo}"
-DEVICE="${EBERT_DEVICE:-auto}"
+ENGINE="${VU_ENGINE:-faster}"
+MODEL="${VU_MODEL:-large-v3-turbo}"
+DEVICE="${VU_DEVICE:-auto}"
 QUALITY="${FRAME_QUALITY:-3}"
 
 # --- preflight: bootstrap-friendly dependency checks ------------------------
@@ -52,9 +52,9 @@ if ! command -v uvx >/dev/null; then
   echo "install it (one line, cross-platform):" >&2
   echo "  curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS/Linux" >&2
   echo "  powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"   # Windows" >&2
-  echo "then re-run ebert. (set EBERT_AUTO_INSTALL=1 to let ebert install uv for you)" >&2
-  if [ "${EBERT_AUTO_INSTALL:-0}" = "1" ]; then
-    echo ">> EBERT_AUTO_INSTALL=1 → installing uv…" >&2
+  echo "then re-run video-understanding. (set VU_AUTO_INSTALL=1 to let it install uv for you)" >&2
+  if [ "${VU_AUTO_INSTALL:-0}" = "1" ]; then
+    echo ">> VU_AUTO_INSTALL=1 → installing uv…" >&2
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     command -v uvx >/dev/null || { echo "error: uv install failed" >&2; exit 1; }
@@ -81,20 +81,20 @@ ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
 echo ">> transcribing (engine=$ENGINE model=$MODEL; first run downloads engine+model)…"
 case "$ENGINE" in
   mlx)  # Apple Silicon fast path (Metal). Model is an HF repo id.
-    [ "$(uname -s)" = "Darwin" ] || echo ">> warning: mlx engine only runs on Apple Silicon; use EBERT_ENGINE=faster elsewhere" >&2
+    [ "$(uname -s)" = "Darwin" ] || echo ">> warning: mlx engine only runs on Apple Silicon; use VU_ENGINE=faster elsewhere" >&2
     MLX_MODEL="$MODEL"; case "$MODEL" in */*) ;; *) MLX_MODEL="mlx-community/whisper-${MODEL}";; esac
-    LANG_ARG=(); [ -n "${EBERT_LANG:-}" ] && LANG_ARG=(--language "$EBERT_LANG")
+    LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
     uvx --from mlx-whisper mlx_whisper "$OUTDIR/transcript.wav" \
       --model "$MLX_MODEL" --output-dir "$OUTDIR" --output-name transcript \
       --output-format all "${LANG_ARG[@]}"
     ;;
   faster)  # cross-platform (CPU/CUDA) via CTranslate2 + faster-whisper.
-    LANG_ARG=(); [ -n "${EBERT_LANG:-}" ] && LANG_ARG=(--language "$EBERT_LANG")
+    LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
     uvx whisper-ctranslate2 "$OUTDIR/transcript.wav" \
       --model "$MODEL" --device "$DEVICE" --compute_type auto \
       --output_dir "$OUTDIR" --output_format all "${LANG_ARG[@]}"
     ;;
-  *) echo "error: unknown EBERT_ENGINE='$ENGINE' (use faster|mlx)" >&2; exit 1 ;;
+  *) echo "error: unknown VU_ENGINE='$ENGINE' (use faster|mlx)" >&2; exit 1 ;;
 esac
 rm -f "$OUTDIR/transcript.wav"
 

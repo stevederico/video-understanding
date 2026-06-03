@@ -1,11 +1,11 @@
-# ebert
+# video-understanding
 
 Your agent's movie critic. Turns any video into something an AI agent can fully
 understand: timestamped frames + an SRT transcript, then the agent reviews the
 frames against the captions and writes a complete `understanding.md`.
 
 Two stages:
-1. **`ebert.sh`** — mechanical extraction (ffmpeg + a self-installing STT engine). No AI.
+1. **`video-understanding.sh`** — mechanical extraction (ffmpeg + a self-installing STT engine). No AI.
 2. **The agent** — reads the frames (filenames are timestamps) and `transcript.srt`,
    correlates picture↔speech, and writes `understanding.md`. Instructions land in
    `AGENT.md` inside the output folder.
@@ -13,7 +13,7 @@ Two stages:
 ## Install
 
 ```sh
-git clone https://github.com/stevederico/ebert.git && cd ebert
+git clone https://github.com/stevederico/video-understanding.git && cd video-understanding
 ```
 
 Prerequisites (the only two):
@@ -22,14 +22,14 @@ Prerequisites (the only two):
 
 That's it. The transcription engine and model **download themselves on first run**
 via `uvx` — no compiler, no Python setup, cross-platform. (Run with
-`EBERT_AUTO_INSTALL=1` and ebert will install `uv` for you if it's missing.)
+`VU_AUTO_INSTALL=1` and it will install `uv` for you if it's missing.)
 
 ## Use
 
 ```sh
-./ebert.sh <video> [interval_seconds] [output_dir]
+./video-understanding.sh <video> [interval_seconds] [output_dir]
 # e.g.
-./ebert.sh ~/Movies/demo.mov 5
+./video-understanding.sh ~/Movies/demo.mov 5
 ```
 
 Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
@@ -53,15 +53,15 @@ engine for extra speed.
 
 | var | default | note |
 |---|---|---|
-| `EBERT_ENGINE` | `faster` | `faster` (any OS) or `mlx` (Apple Silicon only) |
-| `EBERT_MODEL` | `large-v3-turbo` | any Whisper size: `tiny`…`large-v3`, `distil-*` |
-| `EBERT_LANG` | auto-detect | set e.g. `en` to skip detection |
-| `EBERT_DEVICE` | `auto` | `faster` only: `auto`/`cpu`/`cuda` |
+| `VU_ENGINE` | `faster` | `faster` (any OS) or `mlx` (Apple Silicon only) |
+| `VU_MODEL` | `large-v3-turbo` | any Whisper size: `tiny`…`large-v3`, `distil-*` |
+| `VU_LANG` | auto-detect | set e.g. `en` to skip detection |
+| `VU_DEVICE` | `auto` | `faster` only: `auto`/`cpu`/`cuda` |
 | `FRAME_QUALITY` | `3` | ffmpeg `-q:v`, 2 best … 31 worst |
 
 ```sh
-EBERT_ENGINE=mlx ./ebert.sh demo.mov        # Apple Silicon fast path
-EBERT_MODEL=base ./ebert.sh demo.mov        # smaller/faster, lower accuracy
+VU_ENGINE=mlx ./video-understanding.sh demo.mov        # Apple Silicon fast path
+VU_MODEL=base ./video-understanding.sh demo.mov        # smaller/faster, lower accuracy
 ```
 
 ## Notes
