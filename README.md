@@ -13,7 +13,7 @@ Two stages:
 ## Install
 
 ```sh
-git clone <this-repo> ebert && cd ebert
+git clone https://github.com/stevederico/ebert.git && cd ebert
 ```
 
 Prerequisites (the only two):
