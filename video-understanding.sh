@@ -66,7 +66,7 @@ ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
 echo ">> transcribing with whisper.cpp (model=$MODEL)…"
 LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
 whisper-cli -m "$WMODEL" -f "$OUTDIR/transcript.wav" \
-  -of "$OUTDIR/transcript" -osrt -otxt -oj "${LANG_ARG[@]}"
+  -of "$OUTDIR/transcript" -osrt -otxt -oj ${LANG_ARG[@]+"${LANG_ARG[@]}"}
 rm -f "$OUTDIR/transcript.wav"
 
 # --- frames at fixed interval, timestamp-named ------------------------------
