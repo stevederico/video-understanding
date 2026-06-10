@@ -1,0 +1,118 @@
+#!/bin/bash
+set -euo pipefail
+
+# x-transcribe: Support X post URLs for video download + transcription.
+# Usage:
+#   x/bin/x-transcribe <x-url-or-id> [--video <direct-mp4-url>] [--name <slug>]
+# Example (public post, agent provides the video URL):
+#   x/bin/x-transcribe https://x.com/SpaceX/status/2064099405758906727 \
+#     --video 'https://video.twimg.com/amplify_video/...mp4?tag=14' \
+#     --name spacex-ai-satellites
+#
+# Follows x/library/interviews/transcribe-audio.md conventions exactly.
+# Outputs:
+#   x/media/<slug>.mp4
+#   x/library/interviews/x-posts/<slug>.transcript.md (with timestamps + header)
+
+XREF=${1:-}
+VIDEO_URL=""
+SLUG=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --video) VIDEO_URL="$2"; shift 2 ;;
+    --name)  SLUG="$2"; shift 2 ;;
+    *)       XREF="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$XREF" ]]; then
+  echo "Usage: x/bin/x-transcribe <https://x.com/.../status/ID | ID> [--video <mp4-url>] [--name <slug>]" >&2
+  exit 1
+fi
+
+# Extract post ID
+POST_ID=$(echo "$XREF" | sed -n 's/.*status\/\([0-9]*\).*/\1/p; s/^\([0-9]*\)$/\1/p' | head -1)
+if [[ -z "$POST_ID" ]]; then
+  echo "Could not parse post ID from: $XREF" >&2
+  exit 1
+fi
+
+if [[ -z "$SLUG" ]]; then
+  SLUG="x-post-${POST_ID}"
+fi
+
+MEDIA_DIR="x/media"
+TRANSCRIPT_DIR="x/library/interviews/x-posts"
+mkdir -p "$MEDIA_DIR" "$TRANSCRIPT_DIR" /tmp/x-chunks
+
+VIDEO_FILE="${MEDIA_DIR}/${SLUG}.mp4"
+AUDIO_FILE="/tmp/${SLUG}-audio.m4a"
+CHUNK_DIR="/tmp/x-chunks/${SLUG}"
+TRANSCRIPT_FILE="${TRANSCRIPT_DIR}/${SLUG}.transcript.md"
+
+echo "==> X post: $XREF (ID: $POST_ID)"
+echo "==> Slug: $SLUG"
+
+if [[ -n "$VIDEO_URL" && ! -f "$VIDEO_FILE" ]]; then
+  echo "==> Downloading video..."
+  curl -L --progress-bar -o "$VIDEO_FILE" "$VIDEO_URL"
+fi
+
+if [[ ! -f "$VIDEO_FILE" ]]; then
+  echo "No video at $VIDEO_FILE. Provide --video <direct twimg mp4 url> or place file first." >&2
+  exit 1
+fi
+
+# whisper.cpp (whisper-cli) reads 16 kHz mono WAV; extract straight to that.
+WHISPER_MODEL="${WHISPER_MODEL:-$HOME/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin}"
+command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH (build whisper.cpp)" >&2; exit 1; }
+[[ -f "$WHISPER_MODEL" ]] || { echo "error: model not found: $WHISPER_MODEL" >&2; exit 1; }
+
+AUDIO_FILE="/tmp/${SLUG}-audio.wav"
+echo "==> Extract audio (16 kHz mono WAV)..."
+ffmpeg -y -i "$VIDEO_FILE" -vn -ac 1 -ar 16000 "$AUDIO_FILE" 2>/dev/null
+
+DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$AUDIO_FILE" 2>/dev/null || echo 0)
+echo "==> Duration: ${DURATION}s. Chunking at 120s..."
+
+rm -rf "$CHUNK_DIR"
+mkdir -p "$CHUNK_DIR"
+ffmpeg -y -i "$AUDIO_FILE" -f segment -segment_time 120 -c copy "${CHUNK_DIR}/chunk_%03d.wav" 2>/dev/null
+
+echo "==> Transcribing chunks with whisper.cpp large-v3-turbo..."
+for f in "${CHUNK_DIR}"/chunk_*.wav; do
+  echo "  $(basename "$f")"
+  whisper-cli -m "$WHISPER_MODEL" -f "$f" -otxt -of "${f%.wav}" >/dev/null 2>&1
+done
+
+echo "==> Building transcript..."
+cat > "$TRANSCRIPT_FILE" <<EOF
+# X Post ${POST_ID} — transcript
+
+source: ${XREF}
+video: ${VIDEO_FILE} (duration: ${DURATION}s)
+transcribed via whisper.cpp large-v3-turbo (chunked at 2 min, per transcribe-audio.md)
+note: Audio from X (typically low-bitrate). Verify quotes against original video. Minor artifacts possible.
+
+---
+
+EOF
+
+chunk_idx=0
+for f in $(ls "${CHUNK_DIR}"/chunk_*.txt 2>/dev/null | sort); do
+  start=$((chunk_idx * 2))
+  end=$((start + 2))
+  {
+    echo ""
+    echo "## Chunk ${chunk_idx} (~${start}-${end} min)"
+    cat "$f"
+  } >> "$TRANSCRIPT_FILE"
+  chunk_idx=$((chunk_idx + 1))
+done
+
+echo "==> Done."
+echo "Video:     $VIDEO_FILE"
+echo "Transcript: $TRANSCRIPT_FILE"
+echo ""
+echo "Next: review timestamps in transcript against video, clean proper nouns if needed, use for quote threads." 

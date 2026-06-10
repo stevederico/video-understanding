@@ -9,14 +9,13 @@
 # Usage:
 #   video-understanding.sh <video> [interval_seconds] [output_dir]
 #
-# Self-bootstrapping: needs only ffmpeg + uv on the host. The STT engine and
-# model download themselves on first run via uvx — no compiler, cross-platform.
+# STT is local whisper.cpp: whisper-cli must be on PATH and a matching ggml
+# model present (see README for the one-time build + model download).
 #
 # Env overrides:
-#   VU_ENGINE    faster (default, cross-platform) | mlx (Apple Silicon fast path)
-#   VU_MODEL     default: large-v3-turbo
-#   VU_LANG      default: auto-detect (set e.g. en to skip detection)
-#   VU_DEVICE    faster engine only: auto (default) | cpu | cuda
+#   VU_MODEL        default: large-v3-turbo (needs ggml-<VU_MODEL>.bin)
+#   WHISPER_MODEL   explicit model path (default ~/.local/opt/whisper.cpp/models/ggml-<VU_MODEL>.bin)
+#   VU_LANG         default: auto-detect (set e.g. en to skip detection)
 #   FRAME_QUALITY   ffmpeg -q:v for JPEGs, 2(best)-31(worst), default 3
 #
 # Output tree (in <output_dir>):
@@ -32,9 +31,8 @@ set -euo pipefail
 VIDEO="${1:?usage: video-understanding.sh <video> [interval_seconds] [output_dir]}"
 INTERVAL="${2:-5}"
 OUTDIR="${3:-${VIDEO%.*}_understand}"
-ENGINE="${VU_ENGINE:-faster}"
 MODEL="${VU_MODEL:-large-v3-turbo}"
-DEVICE="${VU_DEVICE:-auto}"
+WMODEL="${WHISPER_MODEL:-$HOME/.local/opt/whisper.cpp/models/ggml-${MODEL}.bin}"
 QUALITY="${FRAME_QUALITY:-3}"
 
 # --- preflight: bootstrap-friendly dependency checks ------------------------
@@ -47,21 +45,8 @@ need_ffmpeg_hint() {
 }
 command -v ffmpeg  >/dev/null || { echo "error: ffmpeg not found → $(need_ffmpeg_hint)" >&2; exit 1; }
 command -v ffprobe >/dev/null || { echo "error: ffprobe not found → $(need_ffmpeg_hint)" >&2; exit 1; }
-if ! command -v uvx >/dev/null; then
-  echo "error: uv not found (provides uvx, runs the transcription engine)." >&2
-  echo "install it (one line, cross-platform):" >&2
-  echo "  curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS/Linux" >&2
-  echo "  powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"   # Windows" >&2
-  echo "then re-run video-understanding. (set VU_AUTO_INSTALL=1 to let it install uv for you)" >&2
-  if [ "${VU_AUTO_INSTALL:-0}" = "1" ]; then
-    echo ">> VU_AUTO_INSTALL=1 → installing uv…" >&2
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
-    command -v uvx >/dev/null || { echo "error: uv install failed" >&2; exit 1; }
-  else
-    exit 1
-  fi
-fi
+command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — build whisper.cpp (see README)" >&2; exit 1; }
+[ -f "$WMODEL" ] || { echo "error: model not found: $WMODEL → ~/.local/opt/whisper.cpp/models/download-ggml-model.sh ${MODEL}" >&2; exit 1; }
 [ -f "$VIDEO" ] || { echo "error: no such file: $VIDEO" >&2; exit 1; }
 
 mkdir -p "$OUTDIR/frames"
@@ -78,24 +63,10 @@ echo ">> duration ${DUR}s | source fps ${FPS} | sampling every ${INTERVAL}s"
 echo ">> extracting audio…"
 ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
 
-echo ">> transcribing (engine=$ENGINE model=$MODEL; first run downloads engine+model)…"
-case "$ENGINE" in
-  mlx)  # Apple Silicon fast path (Metal). Model is an HF repo id.
-    [ "$(uname -s)" = "Darwin" ] || echo ">> warning: mlx engine only runs on Apple Silicon; use VU_ENGINE=faster elsewhere" >&2
-    MLX_MODEL="$MODEL"; case "$MODEL" in */*) ;; *) MLX_MODEL="mlx-community/whisper-${MODEL}";; esac
-    LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
-    uvx --from mlx-whisper mlx_whisper "$OUTDIR/transcript.wav" \
-      --model "$MLX_MODEL" --output-dir "$OUTDIR" --output-name transcript \
-      --output-format all "${LANG_ARG[@]}"
-    ;;
-  faster)  # cross-platform (CPU/CUDA) via CTranslate2 + faster-whisper.
-    LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
-    uvx whisper-ctranslate2 "$OUTDIR/transcript.wav" \
-      --model "$MODEL" --device "$DEVICE" --compute_type auto \
-      --output_dir "$OUTDIR" --output_format all "${LANG_ARG[@]}"
-    ;;
-  *) echo "error: unknown VU_ENGINE='$ENGINE' (use faster|mlx)" >&2; exit 1 ;;
-esac
+echo ">> transcribing with whisper.cpp (model=$MODEL)…"
+LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
+whisper-cli -m "$WMODEL" -f "$OUTDIR/transcript.wav" \
+  -of "$OUTDIR/transcript" -osrt -otxt -oj "${LANG_ARG[@]}"
 rm -f "$OUTDIR/transcript.wav"
 
 # --- frames at fixed interval, timestamp-named ------------------------------
