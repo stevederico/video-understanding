@@ -63,7 +63,7 @@ Examples:
   ./video-understanding.sh https://x.com/user/status/123 --video https://video.twimg.com/...mp4 --name my-post
 
 Does everything: X sourcing (with agent or --video), download, frames + transcript, agent setup.
-Better than x-transcribe: full frames + understanding pipeline, unified CLI.
+Unified CLI for local videos or X posts (frames + transcript + agent setup).
 EOF
       exit 0
       ;;

@@ -38,7 +38,7 @@ Run the project script on the (downloaded or local) video:
 - Outputs: `frames/tNNmNNs.jpg` (timestamped filenames), `transcript.srt`, `transcript.txt`, `transcript.json`, `manifest.json`, `AGENT.md`
 - Env: `VU_MODEL=large-v3-turbo`, `WHISPER_MODEL=...` etc. as documented in README.
 
-If the video came from X, you may also use `./x-transcribe <x-link> --video <downloaded-mp4>` for a chunked markdown transcript as alternative or supplement.
+X videos are handled directly by the main `./video-understanding.sh` script (with the --video flag for the CDN URL).
 
 ## Stage 2: Agent review
 After the script runs, point to the output folder:

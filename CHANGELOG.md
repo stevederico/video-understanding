@@ -2,6 +2,13 @@
 - improve x sourcing
 - add more examples
 
+0.3.0
+
+  Remove x-transcribe script
+  Merge X support
+  Update README SKILL
+  Unify into one tool
+
 0.2.0
 
   Merge x-transcribe into main

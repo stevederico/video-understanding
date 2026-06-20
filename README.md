@@ -115,7 +115,7 @@ It will download (if --video provided), extract frames + transcript, and set up 
 
 See the script usage or SKILL.md for details.
 
-The legacy `./x-transcribe` (for chunked md in x/ structure) is kept for compatibility but X support is merged into the main script.
+X support is now fully built into the main `./video-understanding.sh` script.
 
 ## Sourcing videos from X (works with any agent)
 
@@ -127,9 +127,9 @@ To download videos from X posts safely (no YouTube tools, to avoid blocks):
    ```bash
    curl -L -o video.mp4 "https://video.twimg.com/amplify_video/XXXX/vid/...mp4"
    ```
-4. Then feed the local `video.mp4` to `./video-understanding.sh` or `./x-transcribe`.
+4. Then feed the local `video.mp4` to `./video-understanding.sh`.
 
-This logic is built into the project tools and works the same whether you're using Grok, Claude, Cursor, or another agent. See `x-transcribe` for a ready-made script that handles X URLs + transcription.
+This logic is built into the project tools and works the same whether you're using Grok, Claude, Cursor, or another agent.
 
 ## Notes
 
