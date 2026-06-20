@@ -72,10 +72,13 @@ whisper-cli -m ~/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin \
 ## Use
 
 ```sh
-./video-understanding.sh <video> [interval_seconds] [output_dir]
+VU_PROFILE=local ./video-understanding.sh <video-or-x-url> [interval_seconds] [output_dir] [--direct <mp4>] [--name <slug>]
 # e.g.
 ./video-understanding.sh ~/Movies/demo.mov 5
+./video-understanding.sh https://x.com/user/status/123 --name my-post
 ```
+
+Config via `VU_PROFILE=local` (default) or `grok`. See `config/profiles/`.
 
 Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
@@ -95,6 +98,9 @@ Local **whisper.cpp** (`whisper-cli`) — GPU-accelerated (Metal on Apple Silico
 running the `large-v3-turbo` model set up above. For a different model size,
 download the matching `ggml-<size>.bin` (step 3) and pass `VU_MODEL`.
 
+Tuned with DTW for timestamps, no-speech-thold 0.68, logprob -0.9, VAD if available.
+Post-processing removes non-speech and simple repetitions (inspired by x-studio).
+
 | var | default | note |
 |---|---|---|
 | `VU_MODEL` | `large-v3-turbo` | needs matching `ggml-<model>.bin` (`tiny`…`large-v3`) |
@@ -107,29 +113,30 @@ VU_MODEL=base ./video-understanding.sh demo.mov            # smaller/faster, low
 WHISPER_MODEL=/path/ggml-large-v3.bin ./video-understanding.sh demo.mov
 ```
 
-## X video support
+## X video support (integrated)
 
-X post videos are supported directly by `./video-understanding.sh <x-url> [--video <mp4-url>]`.
+X post videos are supported directly by the main `./video-understanding.sh <x-url>`.
 
-It will download (if --video provided), extract frames + transcript, and set up for agent review.
+- Default (local profile): CLI uses xurl to resolve video URL from post, then curl download.
+- CDN direct: --direct <mp4-url> (for manual or when using grok profile).
+- Grok profile: Grok's built-in X tools ("grok cli") find the post and supply the video URL; CLI uses --direct or the skill provides it.
 
-See the script usage or SKILL.md for details.
+See script --help or SKILL.md. Works for any agent.
 
-X support is now fully built into the main `./video-understanding.sh` script.
+## Configuration profiles
 
-## Sourcing videos from X (works with any agent)
+Pick local vs cloud-focused setups via `VU_PROFILE=local` (default) or `grok`.
 
-To download videos from X posts safely (no YouTube tools, to avoid blocks):
+- Profiles: `config/profiles/<name>.sh`
+- Local (current): fully local whisper.cpp + xurl + curl. No cloud.
+- Grok: placeholder for future cloud steps (e.g. Grok for analysis) with local fallbacks.
+- All env vars from profile can be overridden on the command line.
+- Keeps the tool portable across agents.
 
-1. Use your agent's built-in X search or post-fetch tools to find the post.
-2. Extract the direct video URL from the post's media (look for `video.twimg.com/amplify_video/...mp4`).
-3. Download with plain curl:
-   ```bash
-   curl -L -o video.mp4 "https://video.twimg.com/amplify_video/XXXX/vid/...mp4"
-   ```
-4. Then feed the local `video.mp4` to `./video-understanding.sh`.
-
-This logic is built into the project tools and works the same whether you're using Grok, Claude, Cursor, or another agent.
+Example:
+```sh
+VU_PROFILE=local ./video-understanding.sh demo.mov
+```
 
 ## Notes
 

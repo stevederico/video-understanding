@@ -10,6 +10,12 @@ Full pipeline for turning videos into agent-understandable output: timestamped f
 
 This skill combines video sourcing (including from X), mechanical extraction, and the agent analysis stage. It is generic for any video content.
 
+## Configuration
+Use `VU_PROFILE=local` (default, fully local whisper + xurl + curl) or `grok` (future cloud steps).
+Profiles: config/profiles/<name>.sh
+Env vars override the chosen profile.
+See config/profiles/local.sh for the current local-focused setup.
+
 ## Core rules
 - Use only local tools: ffmpeg + whisper.cpp (whisper-cli). No cloud APIs.
 - For X videos: always use direct CDN download with `curl -L` from video.twimg.com. Never yt-dlp or YouTube links.
@@ -19,13 +25,20 @@ This skill combines video sourcing (including from X), mechanical extraction, an
 - Respect existing local whisper setup (no unauthorized `brew install`).
 
 ## Sourcing videos (especially from X)
-- **Direct X link or post ID**: Use `x_thread_fetch` or `xurl read` to get post data, extract the video media URL (video.twimg.com/...mp4).
-- **Search for videos**: Use `x_keyword_search` (add `filter:videos`) or `x_semantic_search` for topics. Then fetch the post and video URL.
-- Download safely:
+- **Direct X link or post ID**: Pass to CLI.
+  - local: defaults to xurl read to resolve video URL then curl.
+  - grok: Grok's built-in X tools ("grok cli") find the post & interact with X, providing video URLs (CLI uses --direct or skill supplies).
+- Use `--direct <mp4-url>` for manual CDN (bypass resolver).
+- Search X: agent X tools find post, pass URL/ID to CLI.
+- CLI handles download:
   ```bash
-  curl -L --max-time 120 -o /tmp/video.mp4 "https://video.twimg.com/amplify_video/XXXX/vid/avc1/....mp4"
+  ./video-understanding.sh https://x.com/.../status/123
+  # manual CDN
+  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4
   ```
-- For non-X: provide a local path directly to the script.
+- Non-X: local path.
+
+Config: `VU_PROFILE=local` (xurl) or `grok` (Grok's X tools). See config/profiles/. Env overrides.
 
 ## Stage 1: Mechanical extraction
 Run the project script on the (downloaded or local) video:
@@ -38,7 +51,7 @@ Run the project script on the (downloaded or local) video:
 - Outputs: `frames/tNNmNNs.jpg` (timestamped filenames), `transcript.srt`, `transcript.txt`, `transcript.json`, `manifest.json`, `AGENT.md`
 - Env: `VU_MODEL=large-v3-turbo`, `WHISPER_MODEL=...` etc. as documented in README.
 
-X videos are handled directly by the main `./video-understanding.sh` script (with the --video flag for the CDN URL).
+X videos are handled directly by the main `./video-understanding.sh` script (xurl default for resolving CDN URL; use --direct to provide manually).
 
 ## Stage 2: Agent review
 After the script runs, point to the output folder:
@@ -71,3 +84,17 @@ The tool works for any video content. Use it to deeply analyze talks, demos, int
 - Adjust interval: smaller (2-3s) for fast cuts, larger (10s+) for slow talking-head.
 - After extraction, the agent works entirely from the output folder files.
 - All local and deterministic for stage 1.
+
+## Transcript quality (adopted from x-studio patterns)
+- Script now applies post-processing: removes non-speech markers, simple repetitions.
+- Outputs `segments.json` with structured {timestamp, speaker, text} for better agent input.
+- Whisper tuned with DTW, no-speech-thold 0.68, logprob -0.9, VAD if available.
+- For X: videos cached in ~/.cache/video-understanding/x-videos (resume/skip re-download).
+
+## Config profiles
+- Source with `VU_PROFILE=local` (default) or `grok`.
+- Profiles live in `config/profiles/<name>.sh`
+- Local profile: fully local whisper + xurl + curl.
+- Grok profile: placeholder for future cloud steps (e.g. Grok vision or enrichment) while keeping local fallbacks.
+- Override any var via env (takes precedence over profile).
+- Keeps everything portable for any agent.

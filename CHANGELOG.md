@@ -2,6 +2,15 @@
 - improve x sourcing
 - add more examples
 
+0.4.0
+
+  Add config profiles
+  Add xurl resolver
+  Update --direct flag
+  Improve transcript quality
+  Add segments.json
+  Update docs and CLI
+
 0.3.0
 
   Remove x-transcribe script
