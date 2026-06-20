@@ -107,12 +107,15 @@ VU_MODEL=base ./video-understanding.sh demo.mov            # smaller/faster, low
 WHISPER_MODEL=/path/ggml-large-v3.bin ./video-understanding.sh demo.mov
 ```
 
-## Bonus: `x-transcribe`
+## X video support
 
-A standalone X-post video transcriber (also whisper.cpp-based) lives alongside as
-`./x-transcribe`. Downloads an X video, extracts audio, chunks at 2 min, and writes
-a markdown transcript. Same `$WHISPER_MODEL` setup as above. See the header of the
-script for usage.
+X post videos are supported directly by `./video-understanding.sh <x-url> [--video <mp4-url>]`.
+
+It will download (if --video provided), extract frames + transcript, and set up for agent review.
+
+See the script usage or SKILL.md for details.
+
+The legacy `./x-transcribe` (for chunked md in x/ structure) is kept for compatibility but X support is merged into the main script.
 
 ## Sourcing videos from X (works with any agent)
 

@@ -3,11 +3,18 @@
 # transcript, then hand off to an AI agent to review frames against the
 # transcript and write a full understanding of the video.
 #
+# Supports local video files or X (Twitter) posts (via direct CDN URL or agent-provided).
+# For X: downloads with curl, then extracts frames + transcript like local.
+#
 # Stage 1 (this script): mechanical extraction. Fast, deterministic, no AI.
 # Stage 2 (the agent):    reads frames + SRT, writes understanding.md.
 #
 # Usage:
-#   video-understanding.sh <video> [interval_seconds] [output_dir]
+#   video-understanding.sh <video-or-x-url> [interval_seconds] [output_dir] [--video <direct-mp4>] [--name <slug>]
+#
+# Examples:
+#   ./video-understanding.sh ~/Movies/demo.mov 5
+#   ./video-understanding.sh https://x.com/user/status/1234567890 --video https://video.twimg.com/...mp4
 #
 # STT is local whisper.cpp: whisper-cli must be on PATH and a matching ggml
 # model present (see README for the one-time build + model download).
@@ -28,12 +35,83 @@
 
 set -euo pipefail
 
-VIDEO="${1:?usage: video-understanding.sh <video> [interval_seconds] [output_dir]}"
+VIDEO="${1:-}"
 INTERVAL="${2:-5}"
-OUTDIR="${3:-${VIDEO%.*}_understand}"
+OUTDIR="${3:-}"
+
+# Parse all args
+XREF=""
+VIDEO_URL=""
+SLUG=""
+shift $(( $# > 0 ? 1 : 0 )) 2>/dev/null || true
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -h|--help)
+      cat <<EOF
+video-understanding - Official CLI for video analysis with AI
+
+Usage:
+  video-understanding <video-or-x-url> [interval] [outdir] [options]
+
+Options:
+  --video <mp4-url>   Direct video URL (for X posts, get from post metadata)
+  --name <slug>       Slug for output (default from file or post ID)
+  -h, --help          Show this help
+
+Examples:
+  ./video-understanding.sh demo.mov 5
+  ./video-understanding.sh https://x.com/user/status/123 --video https://video.twimg.com/...mp4 --name my-post
+
+Does everything: X sourcing (with agent or --video), download, frames + transcript, agent setup.
+Better than x-transcribe: full frames + understanding pipeline, unified CLI.
+EOF
+      exit 0
+      ;;
+    --video) VIDEO_URL="$2"; shift 2 ;;
+    --name)  SLUG="$2"; shift 2 ;;
+    *)       echo "Unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "$VIDEO" ]]; then
+  echo "Error: video or X URL required" >&2
+  echo "See --help" >&2
+  exit 1
+fi
+
 MODEL="${VU_MODEL:-large-v3-turbo}"
 WMODEL="${WHISPER_MODEL:-$HOME/.local/opt/whisper.cpp/models/ggml-${MODEL}.bin}"
 QUALITY="${FRAME_QUALITY:-3}"
+
+# Handle X URL or ID as input
+if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
+  XREF="$VIDEO"
+  POST_ID=$(echo "$XREF" | sed -n 's/.*status\/\([0-9]*\).*/\1/p; s/^\([0-9]*\)$/\1/p' | head -1)
+  if [[ -z "$POST_ID" ]]; then
+    echo "Could not parse post ID from XREF: $XREF" >&2
+    exit 1
+  fi
+  if [[ -z "$SLUG" ]]; then
+    SLUG="x-post-${POST_ID}"
+  fi
+  if [[ -z "$OUTDIR" ]]; then
+    OUTDIR="${SLUG}_understand"
+  fi
+  VIDEO_FILE="/tmp/${SLUG}.mp4"
+  if [[ -n "$VIDEO_URL" && ! -f "$VIDEO_FILE" ]]; then
+    echo ">> Downloading X video..."
+    curl -L --progress-bar -o "$VIDEO_FILE" "$VIDEO_URL"
+  fi
+  if [[ ! -f "$VIDEO_FILE" ]]; then
+    echo "No video file. Provide --video <direct twimg mp4 url> for X post." >&2
+    exit 1
+  fi
+  VIDEO="$VIDEO_FILE"
+else
+  if [[ -z "$OUTDIR" ]]; then
+    OUTDIR="${VIDEO%.*}_understand"
+  fi
+fi
 
 # --- preflight: bootstrap-friendly dependency checks ------------------------
 need_ffmpeg_hint() {
