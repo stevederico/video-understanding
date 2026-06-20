@@ -1,5 +1,11 @@
 # To-do list
 
+0.7.0
+
+  Fix macOS sed syntax
+  Support script symlinks
+  Improve PATH install
+
 0.6.0
 
   Restore todo notes

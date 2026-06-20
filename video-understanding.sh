@@ -39,7 +39,7 @@ set -euo pipefail
 
 # Load config profile (default: local)
 CONFIG_PROFILE="${VU_PROFILE:-local}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(dirname "$(perl -MCwd -e 'print Cwd::abs_path(shift)' "${BASH_SOURCE[0]}")")"
 CONFIG_FILE="$SCRIPT_DIR/config/profiles/${CONFIG_PROFILE}.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -250,8 +250,8 @@ rm -f "$OUTDIR/transcript.wav"
 if [ -f "$OUTDIR/transcript.txt" ]; then
   echo ">> cleaning transcript..."
   # remove [music] etc and sound effects
-  sed -i '/^\[.*\]$/d' "$OUTDIR/transcript.txt"
-  sed -i '/^\*\(music\|laughter\|applause\)\*$/Id' "$OUTDIR/transcript.txt"
+  sed -i '' '/^\[.*\]$/d' "$OUTDIR/transcript.txt"
+  sed -i '' '/^\*\(music\|laughter\|applause\)\*$/Id' "$OUTDIR/transcript.txt"
   # dedupe consecutive identical lines
   awk 'NF && $0 != last { print; last=$0 }' "$OUTDIR/transcript.txt" > /tmp/clean.txt && mv /tmp/clean.txt "$OUTDIR/transcript.txt"
 fi
