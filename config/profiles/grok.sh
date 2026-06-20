@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================
 # GROK / AGENT-FOCUSED PROFILE
-# When running under Grok (or similar), the agent handles "cloud" parts like X interaction.
-# Mechanical stages remain local.
-# Use: VU_PROFILE=grok ./video-understanding.sh ...
+# When running under Grok (or similar), the agent handles X interaction via its built-in tools
+# and supplies the video URL with --direct. Mechanical stages (ffmpeg + whisper) remain local.
+# Use: VU_PROFILE=grok ./video-understanding.sh ... --direct <mp4-from-agent>
 # ============================================
 
 : "${VU_PROFILE:=grok}"
@@ -79,6 +79,5 @@ export TMP_DIR
 : "${TRANSCRIPTION_BACKEND:=local}"
 export TRANSCRIPTION_BACKEND
 
-# Note: When this profile is active and running inside Grok, the agent uses its native X tools
-# (the "grok cli") to find posts and supply video URLs. The bash CLI stays local for extraction.
-# See SKILL.md for agent-side usage.
+# Note: The grok profile tells the CLI to expect --direct from the agent (which uses Grok's X tools).
+# Extraction is always local. See SKILL.md for how the skill invokes the CLI.

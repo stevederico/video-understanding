@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================
 # LOCAL FOCUSED PROFILE
-# All stages use local tools only.
-# No cloud APIs, no external services.
+# All stages use local tools only (xurl for X resolution + curl + local whisper).
+# No cloud APIs, no external services. X resolution is handled by local xurl CLI (or --direct).
 # ============================================
 
 : "${VU_PROFILE:=local}"

@@ -76,9 +76,13 @@ VU_PROFILE=local ./video-understanding.sh <video-or-x-url> [interval_seconds] [o
 # e.g.
 ./video-understanding.sh ~/Movies/demo.mov 5
 ./video-understanding.sh https://x.com/user/status/123 --name my-post
+VU_PROFILE=local ./video-understanding.sh https://x.com/user/status/123 --direct https://video.twimg.com/...mp4 --name p
+DEFAULT_INTERVAL=2 ./video-understanding.sh clip.mov --force
+./video-understanding.sh https://x.com/... --name post --force
 ```
 
 Config via `VU_PROFILE=local` (default) or `grok`. See `config/profiles/`.
+Profiles can also set DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX (override with env or positionals).
 
 Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
@@ -129,13 +133,29 @@ Pick local vs cloud-focused setups via `VU_PROFILE=local` (default) or `grok`.
 
 - Profiles: `config/profiles/<name>.sh`
 - Local (current): fully local whisper.cpp + xurl + curl. No cloud.
-- Grok: placeholder for future cloud steps (e.g. Grok for analysis) with local fallbacks.
+- Grok: agent uses built-in X tools to supply video URL via --direct; mechanical stages stay local.
 - All env vars from profile can be overridden on the command line.
 - Keeps the tool portable across agents.
 
 Example:
 ```sh
 VU_PROFILE=local ./video-understanding.sh demo.mov
+```
+
+## Examples
+
+```sh
+# local file, default 5s
+./video-understanding.sh ~/clip.mov
+
+# X post (uses xurl if installed)
+./video-understanding.sh https://x.com/user/status/123 --name post123
+
+# force re-download + custom suffix via profile/env
+DEFAULT_OUTDIR_SUFFIX=_review ./video-understanding.sh https://x.com/... --direct https://...mp4 --force
+
+# explicit grok profile + agent-provided URL
+VU_PROFILE=grok ./video-understanding.sh https://x.com/.../123 --direct https://video.twimg.com/...mp4 --name p
 ```
 
 ## Notes

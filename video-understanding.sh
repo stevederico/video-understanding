@@ -46,12 +46,18 @@ if [[ -f "$CONFIG_FILE" ]]; then
   source "$CONFIG_FILE"
 fi
 
+# Apply profile defaults early (before arg parsing) so DEFAULT_INTERVAL / DEFAULT_OUTDIR_SUFFIX
+# from config/profiles/*.sh control behavior (env overrides still win).
+: "${DEFAULT_INTERVAL:=5}"
+: "${DEFAULT_OUTDIR_SUFFIX:=_understand}"
+
 # Parse args: support --help first, video first, options mixed, positionals for interval/outdir
 VIDEO=""
-INTERVAL=5
+INTERVAL="${DEFAULT_INTERVAL}"
 OUTDIR=""
 DIRECT_URL=""
 SLUG=""
+FORCE_DOWNLOAD=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -65,14 +71,19 @@ Usage:
 Options:
   --direct <mp4-url>  Direct CDN URL to use (bypass xurl resolve; for manual CDN)
   --name <slug>       Slug for output (default from file or post ID)
+  --force, --no-cache  Re-download even if cached video exists
   -h, --help          Show this help
 
 Config: VU_PROFILE=local (default) or grok. See config/profiles/*.sh
+Interval and output dir suffix can be controlled via profile (DEFAULT_INTERVAL / DEFAULT_OUTDIR_SUFFIX).
 
 Examples (xurl default for X):
   ./video-understanding.sh demo.mov 5
-  ./video-understanding.sh https://x.com/user/status/123 --name my-post
-  ./video-understanding.sh https://x.com/user/status/123 --direct https://video.twimg.com/...mp4 --name my-post
+  VU_PROFILE=local ./video-understanding.sh https://x.com/.../status/123 --name my-post
+  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --name my-post
+  VU_PROFILE=grok ./video-understanding.sh https://x.com/... --direct <url> --name p
+  DEFAULT_INTERVAL=2 ./video-understanding.sh local.mov 2 myout_review
+  ./video-understanding.sh x-post.mp4 --force --name retry
 
 When VU_PROFILE=grok: Grok's built-in X tools handle finding posts and supplying video URLs (CLI expects --direct or the skill provides it).
 CLI defaults to xurl for local profile. Use --direct for manual CDN.
@@ -83,12 +94,13 @@ EOF
     --direct) DIRECT_URL="$2"; shift 2 ;;
     --video) DIRECT_URL="$2"; shift 2 ;;  # legacy alias for --direct
     --name)  SLUG="$2"; shift 2 ;;
+    --force|--no-cache) FORCE_DOWNLOAD=1; shift ;;
     -*)
       echo "Unknown arg: $1" >&2; exit 1 ;;
     *)
       if [[ -z "$VIDEO" ]]; then
         VIDEO="$1"
-      elif [[ $INTERVAL == 5 && "$1" =~ ^[0-9]+$ ]]; then
+      elif [[ "$1" =~ ^[0-9]+$ && "$INTERVAL" == "${DEFAULT_INTERVAL}" ]]; then
         INTERVAL="$1"
       elif [[ -z "$OUTDIR" ]]; then
         OUTDIR="$1"
@@ -136,7 +148,7 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
     SLUG="x-post-${POST_ID}"
   fi
   if [[ -z "$OUTDIR" ]]; then
-    OUTDIR="${SLUG}_understand"
+    OUTDIR="${SLUG}${DEFAULT_OUTDIR_SUFFIX}"
   fi
   VIDEO_FILE="${X_CACHE_DIR}/${SLUG}.mp4"
   if [[ -z "$DIRECT_URL" ]]; then
@@ -146,7 +158,11 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
         POST_JSON=$(xurl read "$POST_ID" 2>/dev/null || echo '{}')
         if [ "$POST_JSON" != "{}" ]; then
           if command -v jq >/dev/null 2>&1; then
-            DIRECT_URL=$(echo "$POST_JSON" | jq -r '.. | strings | select(contains("video.twimg.com") and endswith(".mp4"))' | head -1)
+            DIRECT_URL=$(echo "$POST_JSON" | jq -r '
+              ( .media[]?.video_info?.variants[]?.url //
+                .extended_entities?.media[]?.video_info?.variants[]?.url //
+                .. | strings ) | select(contains("video.twimg.com") and endswith(".mp4"))' \
+            | head -1 2>/dev/null || true)
           else
             echo ">> jq not found; cannot parse xurl JSON. Provide --direct <url>"
             DIRECT_URL=""
@@ -160,15 +176,19 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
           echo ">> xurl read failed (auth needed?). Provide --direct <url>"
         fi
       else
-        echo ">> xurl not found; provide --direct <direct twimg mp4 url>"
+        echo ">> xurl not found; provide --direct <direct twimg mp4 url> (or set X_VIDEO_RESOLVER=grok + supply URL from agent)"
       fi
     elif [[ "$X_VIDEO_RESOLVER" == "grok" ]]; then
       echo ">> Using grok resolver: Grok's built-in X tools (grok cli) find post & supply URL; CLI expects --direct or skill provides."
     fi
   fi
-  if [[ -n "$DIRECT_URL" && ! -f "$VIDEO_FILE" ]]; then
+  if [[ -n "$DIRECT_URL" && ( ! -f "$VIDEO_FILE" || "$FORCE_DOWNLOAD" ) ]]; then
     echo ">> Downloading X video..."
-    curl -L --progress-bar -o "$VIDEO_FILE" "$DIRECT_URL"
+    curl -L --fail --retry 2 --progress-bar -o "$VIDEO_FILE" "$DIRECT_URL"
+  fi
+  if [[ -n "$DIRECT_URL" && ! -s "$VIDEO_FILE" ]]; then
+    echo "Download failed or empty file: $DIRECT_URL" >&2
+    exit 1
   fi
   if [[ ! -f "$VIDEO_FILE" ]]; then
     if [[ "$X_VIDEO_RESOLVER" == "grok" ]]; then
@@ -181,7 +201,7 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
   VIDEO="$VIDEO_FILE"
 else
   if [[ -z "$OUTDIR" ]]; then
-    OUTDIR="${VIDEO%.*}_understand"
+    OUTDIR="${VIDEO%.*}${DEFAULT_OUTDIR_SUFFIX}"
   fi
 fi
 

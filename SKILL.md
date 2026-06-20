@@ -11,7 +11,7 @@ Full pipeline for turning videos into agent-understandable output: timestamped f
 This skill combines video sourcing (including from X), mechanical extraction, and the agent analysis stage. It is generic for any video content.
 
 ## Configuration
-Use `VU_PROFILE=local` (default, fully local whisper + xurl + curl) or `grok` (future cloud steps).
+Use `VU_PROFILE=local` (default, fully local whisper + xurl + curl) or `grok` (agent supplies video URL via its X tools).
 Profiles: config/profiles/<name>.sh
 Env vars override the chosen profile.
 See config/profiles/local.sh for the current local-focused setup.
@@ -33,12 +33,13 @@ See config/profiles/local.sh for the current local-focused setup.
 - CLI handles download:
   ```bash
   ./video-understanding.sh https://x.com/.../status/123
-  # manual CDN
-  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4
+  # manual CDN or force re-download
+  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --force
+  VU_PROFILE=local ./video-understanding.sh https://... --name post
   ```
 - Non-X: local path.
 
-Config: `VU_PROFILE=local` (xurl) or `grok` (Grok's X tools). See config/profiles/. Env overrides.
+Config: `VU_PROFILE=local` (xurl) or `grok` (Grok's X tools supply --direct). See config/profiles/. Env overrides.
 
 ## Stage 1: Mechanical extraction
 Run the project script on the (downloaded or local) video:
@@ -47,7 +48,7 @@ Run the project script on the (downloaded or local) video:
 ./video-understanding.sh /path/to/video.mp4 [interval_seconds] [output_dir]
 ```
 
-- Default interval: 5s
+- Default interval: 5s (override via DEFAULT_INTERVAL in profile/env/positional)
 - Outputs: `frames/tNNmNNs.jpg` (timestamped filenames), `transcript.srt`, `transcript.txt`, `transcript.json`, `manifest.json`, `AGENT.md`
 - Env: `VU_MODEL=large-v3-turbo`, `WHISPER_MODEL=...` etc. as documented in README.
 
@@ -72,9 +73,9 @@ The AGENT.md instructs:
 
 ## Full example flow
 1. User: "video understand this X post: https://x.com/.../status/123"
-2. Agent: fetch post with X tools → extract video URL → curl download to /tmp/video.mp4
-3. Agent: `./video-understanding.sh /tmp/video.mp4 5 /tmp/myvideo_understand`
-4. Agent: read the generated AGENT.md in /tmp/myvideo_understand/ and produce understanding.md
+2. Agent: fetch post with X tools → decide profile + extract or supply video URL
+3. Agent: `VU_PROFILE=local ./video-understanding.sh https://x.com/.../123 --name mypost --force` (or --direct for grok profile)
+4. Agent: read the generated AGENT.md in `mypost_understand/` (or custom suffix) and produce understanding.md
 5. Output the summary or full understanding.md to user.
 
 The tool works for any video content. Use it to deeply analyze talks, demos, interviews, etc. from X or local files.
@@ -95,6 +96,7 @@ The tool works for any video content. Use it to deeply analyze talks, demos, int
 - Source with `VU_PROFILE=local` (default) or `grok`.
 - Profiles live in `config/profiles/<name>.sh`
 - Local profile: fully local whisper + xurl + curl.
-- Grok profile: placeholder for future cloud steps (e.g. Grok vision or enrichment) while keeping local fallbacks.
+- Grok profile: agent uses native X tools + passes URL with --direct; extraction (ffmpeg/whisper) is always local.
+- Profiles also control DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX.
 - Override any var via env (takes precedence over profile).
 - Keeps everything portable for any agent.

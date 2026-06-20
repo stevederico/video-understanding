@@ -1,6 +1,12 @@
 # To-do list
-- improve x sourcing
-- add more examples
+
+0.5.0
+
+  Wire DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX from profiles
+  Add --force for X cache bypass
+  Improve xurl video URL extraction
+  Add usage examples
+  Clarify Grok profile role
 
 0.4.0
 
