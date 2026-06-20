@@ -114,6 +114,20 @@ A standalone X-post video transcriber (also whisper.cpp-based) lives alongside a
 a markdown transcript. Same `$WHISPER_MODEL` setup as above. See the header of the
 script for usage.
 
+## Sourcing videos from X (works with any agent)
+
+To download videos from X posts safely (no YouTube tools, to avoid blocks):
+
+1. Use your agent's built-in X search or post-fetch tools to find the post.
+2. Extract the direct video URL from the post's media (look for `video.twimg.com/amplify_video/...mp4`).
+3. Download with plain curl:
+   ```bash
+   curl -L -o video.mp4 "https://video.twimg.com/amplify_video/XXXX/vid/...mp4"
+   ```
+4. Then feed the local `video.mp4` to `./video-understanding.sh` or `./x-transcribe`.
+
+This logic is built into the project tools and works the same whether you're using Grok, Claude, Cursor, or another agent. See `x-transcribe` for a ready-made script that handles X URLs + transcription.
+
 ## Notes
 
 - Frames are extracted by **seeking to each exact timestamp** (`ffmpeg -ss`), so
