@@ -26,7 +26,7 @@ export X_CACHE_DIR
 # ----------------------------------------
 : "${FRAME_QUALITY:=3}"         # ffmpeg -q:v (lower=better)
 export FRAME_QUALITY
-: "${DEFAULT_INTERVAL:=5}"      # seconds between frames
+: "${DEFAULT_INTERVAL:=0.5}"      # default 500ms; override with --interval, env, or positional
 export DEFAULT_INTERVAL
 
 # ----------------------------------------

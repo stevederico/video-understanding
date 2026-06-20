@@ -72,17 +72,18 @@ whisper-cli -m ~/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin \
 ## Use
 
 ```sh
-VU_PROFILE=local ./video-understanding.sh <video-or-x-url> [interval_seconds] [output_dir] [--direct <mp4>] [--name <slug>]
+VU_PROFILE=local ./video-understanding.sh <video-or-x-url> [interval] [output_dir] [--interval <val>] [--direct <mp4>] [--name <slug>]
 # e.g.
-./video-understanding.sh ~/Movies/demo.mov 5
+./video-understanding.sh ~/Movies/demo.mov
+./video-understanding.sh ~/Movies/demo.mov --interval 500ms
 ./video-understanding.sh https://x.com/user/status/123 --name my-post
-VU_PROFILE=local ./video-understanding.sh https://x.com/user/status/123 --direct https://video.twimg.com/...mp4 --name p
+VU_PROFILE=local ./video-understanding.sh https://x.com/user/status/123 --direct https://video.twimg.com/...mp4 --name p --interval 1
 DEFAULT_INTERVAL=2 ./video-understanding.sh clip.mov --force
-./video-understanding.sh https://x.com/... --name post --force
+./video-understanding.sh https://x.com/... --name post --force --interval 0.5
 ```
 
 Config via `VU_PROFILE=local` (default) or `grok`. See `config/profiles/`.
-Profiles can also set DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX (override with env or positionals).
+Use --interval (or DEFAULT_INTERVAL env/profile, or second positional) to set sampling interval. Supports values like 0.5, 500ms, 2s. Default: 500ms. Profiles can set DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX.
 
 Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
@@ -90,7 +91,7 @@ Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
 | file | what |
 |---|---|
-| `frames/tNNmNNs.jpg` | one frame per interval; **filename = exact timestamp** |
+| `frames/tNNmNNs.jpg` (or tNNmNNsNNNms.jpg) | one frame per interval; **filename = exact timestamp** (supports 0.5s = 500ms) |
 | `transcript.srt` | timestamped captions |
 | `transcript.txt` / `.json` | same transcript, other formats |
 | `manifest.json` | duration, fps, interval, frame→time map |
@@ -145,7 +146,7 @@ VU_PROFILE=local ./video-understanding.sh demo.mov
 ## Examples
 
 ```sh
-# local file, default 5s
+# local file, default 500ms
 ./video-understanding.sh ~/clip.mov
 
 # X post (uses xurl if installed)
@@ -162,7 +163,6 @@ VU_PROFILE=grok ./video-understanding.sh https://x.com/.../123 --direct https://
 
 - Frames are extracted by **seeking to each exact timestamp** (`ffmpeg -ss`), so
   the filename never drifts from the real frame time — unlike the `fps=1/N` filter.
-- Fixed-interval sampling: smaller interval for fast-cut content, larger for
-  talking-head/screencast.
+- Fixed-interval sampling: use --interval 500ms (or 0.5) for fast-cut content, larger (e.g. 3s) for talking-head/screencast.
 - All local. No cloud, no API key. Whisper `large-v3-turbo` is the current
   best general model — there's no newer Whisper architecture to switch to.

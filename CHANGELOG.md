@@ -1,5 +1,12 @@
 # To-do list
 
+0.8.0
+
+  Add --interval parameter
+  Default 500ms frames
+  Normalize ms s units
+  Update docs and help
+
 0.7.0
 
   Fix macOS sed syntax

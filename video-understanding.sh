@@ -11,15 +11,16 @@
 # Stage 2 (the agent):    reads frames + SRT, writes understanding.md.
 #
 # Usage:
-#   video-understanding.sh <video-or-x-url> [interval_seconds] [output_dir] [--direct <mp4-url>] [--name <slug>]
+#   video-understanding.sh <video-or-x-url> [interval] [output_dir] [--interval <val>] [--direct <mp4-url>] [--name <slug>]
+#   --interval accepts 0.5, 500ms, 2s etc. Default: 500ms.
 #
 # Config: VU_PROFILE=local (default) or grok. Profiles in config/profiles/
 # Env vars override profile.
 #
 # Examples:
-#   ./video-understanding.sh ~/Movies/demo.mov 5
-#   ./video-understanding.sh https://x.com/user/status/1234567890
-#   ./video-understanding.sh https://x.com/user/status/1234567890 --direct https://video.twimg.com/...mp4
+#   ./video-understanding.sh ~/Movies/demo.mov
+#   ./video-understanding.sh https://x.com/user/status/1234567890 --interval 500ms
+#   ./video-understanding.sh https://x.com/user/status/1234567890 --direct https://video.twimg.com/...mp4 --interval 1
 #
 # STT is local whisper.cpp: whisper-cli must be on PATH and a matching ggml
 # model present (see README for the one-time build + model download).
@@ -28,7 +29,7 @@
 # Env vars override profile. Local = fully local (whisper + xurl + curl).
 #
 # Output tree (in <output_dir>):
-#   frames/t00m05s.jpg ...   one JPEG every <interval> seconds, timestamp-named
+#   frames/t00m00s.jpg or t00m00s500ms.jpg ...   one JPEG every <interval> (default 500ms), timestamp-named
 #   transcript.srt           timestamped captions
 #   transcript.txt           plain transcript
 #   transcript.json          word/segment data
@@ -48,12 +49,25 @@ fi
 
 # Apply profile defaults early (before arg parsing) so DEFAULT_INTERVAL / DEFAULT_OUTDIR_SUFFIX
 # from config/profiles/*.sh control behavior (env overrides still win).
-: "${DEFAULT_INTERVAL:=5}"
+: "${DEFAULT_INTERVAL:=0.5}"
 : "${DEFAULT_OUTDIR_SUFFIX:=_understand}"
+DEFAULT_INTERVAL_RAW="$DEFAULT_INTERVAL"
+
+# Normalize interval value to seconds (float). Accepts numbers, 500ms, 2s, etc.
+normalize_interval() {
+  local v=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+  if [[ "$v" =~ ^([0-9.]+)ms$ ]]; then
+    awk -v x="${BASH_REMATCH[1]}" 'BEGIN { printf "%.3f", x / 1000 }'
+  elif [[ "$v" =~ ^([0-9.]+)s?$ ]]; then
+    awk -v x="${BASH_REMATCH[1]}" 'BEGIN { printf "%.3f", x }'
+  else
+    echo "$1"
+  fi
+}
 
 # Parse args: support --help first, video first, options mixed, positionals for interval/outdir
 VIDEO=""
-INTERVAL="${DEFAULT_INTERVAL}"
+INTERVAL=$(normalize_interval "${DEFAULT_INTERVAL_RAW}")
 OUTDIR=""
 DIRECT_URL=""
 SLUG=""
@@ -69,21 +83,23 @@ Usage:
   video-understanding <video-or-x-url> [interval] [outdir] [options]
 
 Options:
+  --interval <val>    Frame interval (default 0.5s / 500ms). Accepts 0.5, 500ms, 2s, etc.
   --direct <mp4-url>  Direct CDN URL to use (bypass xurl resolve; for manual CDN)
   --name <slug>       Slug for output (default from file or post ID)
   --force, --no-cache  Re-download even if cached video exists
   -h, --help          Show this help
 
 Config: VU_PROFILE=local (default) or grok. See config/profiles/*.sh
-Interval and output dir suffix can be controlled via profile (DEFAULT_INTERVAL / DEFAULT_OUTDIR_SUFFIX).
+Interval and output dir suffix can be controlled via --interval, DEFAULT_INTERVAL (500ms default), or positional.
 
 Examples (xurl default for X):
-  ./video-understanding.sh demo.mov 5
+  ./video-understanding.sh demo.mov
+  ./video-understanding.sh demo.mov --interval 500ms
   VU_PROFILE=local ./video-understanding.sh https://x.com/.../status/123 --name my-post
-  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --name my-post
+  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --name my-post --interval 1
   VU_PROFILE=grok ./video-understanding.sh https://x.com/... --direct <url> --name p
-  DEFAULT_INTERVAL=2 ./video-understanding.sh local.mov 2 myout_review
-  ./video-understanding.sh x-post.mp4 --force --name retry
+  DEFAULT_INTERVAL=2 ./video-understanding.sh local.mov --interval 2 myout_review
+  ./video-understanding.sh x-post.mp4 --force --name retry --interval 0.25
 
 When VU_PROFILE=grok: Grok's built-in X tools handle finding posts and supplying video URLs (CLI expects --direct or the skill provides it).
 CLI defaults to xurl for local profile. Use --direct for manual CDN.
@@ -91,6 +107,10 @@ Unified CLI for X or local (full pipeline). Configurable via profiles.
 EOF
       exit 0
       ;;
+    --interval)
+      INTERVAL=$(normalize_interval "$2"); shift 2 ;;
+    --interval=*)
+      INTERVAL=$(normalize_interval "${1#*=}"); shift ;;
     --direct) DIRECT_URL="$2"; shift 2 ;;
     --video) DIRECT_URL="$2"; shift 2 ;;  # legacy alias for --direct
     --name)  SLUG="$2"; shift 2 ;;
@@ -100,8 +120,8 @@ EOF
     *)
       if [[ -z "$VIDEO" ]]; then
         VIDEO="$1"
-      elif [[ "$1" =~ ^[0-9]+$ && "$INTERVAL" == "${DEFAULT_INTERVAL}" ]]; then
-        INTERVAL="$1"
+      elif { [[ "$1" =~ ^[0-9]+$ ]] || [[ "$1" =~ ^[0-9]*\.[0-9]+$ ]] || [[ "$1" =~ ^[0-9.]+(ms|s)?$ ]]; } && [[ "$INTERVAL" == "$(normalize_interval "${DEFAULT_INTERVAL_RAW}")" ]]; then
+        INTERVAL=$(normalize_interval "$1")
       elif [[ -z "$OUTDIR" ]]; then
         OUTDIR="$1"
       else
@@ -111,6 +131,9 @@ EOF
       ;;
   esac
 done
+
+# Final normalization (covers positional args and profile/env values)
+INTERVAL=$(normalize_interval "$INTERVAL")
 
 if [[ -z "$VIDEO" ]]; then
   echo "Error: video or X URL required" >&2
@@ -222,7 +245,7 @@ command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — 
 mkdir -p "$OUTDIR/frames"
 
 # --- probe -----------------------------------------------------------------
-DUR=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$VIDEO" | cut -d. -f1)
+DUR=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$VIDEO")
 FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nk=1:nw=1 "$VIDEO" | head -1)
 echo ">> $VIDEO"
 echo ">> duration ${DUR}s | source fps ${FPS} | sampling every ${INTERVAL}s"
@@ -264,6 +287,7 @@ fi
 # --- frames at fixed interval, timestamp-named ------------------------------
 # Seek to each exact timestamp so the filename always matches the true frame
 # time (ffmpeg's fps=1/N filter drifts on short/low-fps clips and would lie).
+# Supports fractional seconds (e.g. 0.5 for 500ms). Filename encodes timestamp.
 echo ">> extracting frames every ${INTERVAL}s…"
 
 {
@@ -276,17 +300,32 @@ echo ">> extracting frames every ${INTERVAL}s…"
 } > "$OUTDIR/manifest.json"
 
 n=0; first=1; t=0
-while [ "$t" -lt "${DUR:-0}" ] || [ "$t" -eq 0 ]; do
-  printf -v label '%02dm%02ds' $((t/60)) $((t%60))
-  # -ss before -i = fast keyframe seek; accurate enough at whole-second steps
+dur=${DUR:-0}
+while true; do
+  # Build label: tMMmSSs.jpg for whole seconds, tMMmSSsMMMms.jpg for sub-second
+  label=$(awk -v t="$t" '
+    BEGIN {
+      tot = t + 0;
+      min = int(tot / 60);
+      sec = int(tot % 60);
+      ms = int( (tot - int(tot)) * 1000 + 0.5 );
+      if (ms == 0) {
+        printf "%02dm%02ds", min, sec;
+      } else {
+        printf "%02dm%02ds%03dms", min, sec, ms;
+      }
+    }')
   if ffmpeg -y -v error -ss "$t" -i "$VIDEO" -frames:v 1 -q:v "$FRAME_QUALITY" \
        "$OUTDIR/frames/t${label}.jpg" 2>/dev/null && [ -s "$OUTDIR/frames/t${label}.jpg" ]; then
     [ $first -eq 1 ] && first=0 || echo ',' >> "$OUTDIR/manifest.json"
-    printf '    {"file": "frames/t%s.jpg", "t_sec": %d}' "$label" "$t" >> "$OUTDIR/manifest.json"
+    printf '    {"file": "frames/t%s.jpg", "t_sec": %s}' "$label" "$t" >> "$OUTDIR/manifest.json"
     n=$((n+1))
   fi
-  t=$(( t + INTERVAL ))
-  [ "${DUR:-0}" -eq 0 ] && break
+  # next timestamp (float)
+  t=$(awk -v t="$t" -v i="$INTERVAL" 'BEGIN { printf "%.3f", t + i }')
+  if [ "$dur" = "0" ] || awk -v t="$t" -v d="$dur" 'BEGIN { exit (t > d + 0.001) ? 0 : 1 }'; then
+    break
+  fi
 done
 printf '\n  ]\n}\n' >> "$OUTDIR/manifest.json"
 echo ">> $n frames written to $OUTDIR/frames/"
@@ -298,8 +337,8 @@ cat > "$OUTDIR/AGENT.md" <<'EOF'
 Stage 1 (extraction) is done. Now YOU do stage 2.
 
 ## Inputs in this folder
-- `frames/tNNmNNs.jpg` — one frame per sampling interval; the filename IS its
-  timestamp (e.g. `t01m30s.jpg` = 1:30 into the video).
+- `frames/tNNmNNs.jpg` (or `tNNmNNsNNNms.jpg` for sub-second) — one frame per sampling interval; the filename IS its
+  timestamp (e.g. `t01m30s.jpg` = 1:30, `t01m30s500ms.jpg` = 1:30.500 into the video).
 - `transcript.srt` — timestamped captions (what was said, when).
 - `transcript.txt` — same words, plain.
 - `segments.json` — structured segments (timestamp, speaker, text) if available.

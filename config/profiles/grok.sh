@@ -29,7 +29,7 @@ export X_CACHE_DIR
 # ----------------------------------------
 : "${FRAME_QUALITY:=3}"
 export FRAME_QUALITY
-: "${DEFAULT_INTERVAL:=5}"
+: "${DEFAULT_INTERVAL:=0.5}"   # default 500ms; use --interval to override (supports 500ms, 2 etc)
 export DEFAULT_INTERVAL
 
 # ----------------------------------------
