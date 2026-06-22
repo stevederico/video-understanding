@@ -5,7 +5,7 @@ understand: timestamped frames + an SRT transcript, then the agent reviews the
 frames against the captions and writes a complete `understanding.md`.
 
 Two stages:
-1. **`video-understanding.sh`** — mechanical extraction (ffmpeg + local whisper.cpp STT). No AI.
+1. **`video-understanding.sh`** (or `video-understanding` if installed on PATH) — mechanical extraction (ffmpeg + local whisper.cpp STT). No AI.
 2. **The agent** — reads the frames (filenames are timestamps) and `transcript.srt`,
    correlates picture↔speech, and writes `understanding.md`. Instructions land in
    `AGENT.md` inside the output folder.
@@ -14,6 +14,7 @@ Two stages:
 
 ```sh
 git clone https://github.com/stevederico/video-understanding.git && cd video-understanding
+chmod +x video-understanding.sh
 ```
 
 You need **ffmpeg** and the **whisper.cpp CLI** (`whisper-cli`) on your `PATH`, plus a
@@ -51,6 +52,9 @@ Make sure `~/.local/bin` is on your `PATH` (`echo $PATH | tr ':' '\n' | grep .lo
 The symlinks point into `build/bin`, where the dylibs live — **don't move the
 build dir afterward**, or rebuild in place if you do (rpaths are absolute).
 
+> When using with the video-understanding skill (via dotfiles or similar), the
+> command is usually available as `video-understanding` on your PATH.
+
 ### 3. Download a model
 
 ```sh
@@ -71,19 +75,24 @@ whisper-cli -m ~/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin \
 
 ## Use
 
+From the repo:
+
 ```sh
-VU_PROFILE=local ./video-understanding.sh <video-or-x-url> [interval] [output_dir] [--interval <val>] [--direct <mp4>] [--name <slug>]
+./video-understanding.sh <video-or-x-url> [interval] [output_dir] [--interval <val>] [--direct <mp4-url>] [--name <slug>]
 # e.g.
-./video-understanding.sh ~/Movies/demo.mov
-./video-understanding.sh ~/Movies/demo.mov --interval 500ms
+./video-understanding.sh ~/Movies/demo.mov                 # default: every 500ms
+./video-understanding.sh ~/Movies/demo.mov --interval 2s   # every 2 seconds
 ./video-understanding.sh https://x.com/user/status/123 --name my-post
-VU_PROFILE=local ./video-understanding.sh https://x.com/user/status/123 --direct https://video.twimg.com/...mp4 --name p --interval 1
+./video-understanding.sh https://x.com/... --direct https://video.twimg.com/...mp4 --interval 500ms --name p
 DEFAULT_INTERVAL=2 ./video-understanding.sh clip.mov --force
-./video-understanding.sh https://x.com/... --name post --force --interval 0.5
 ```
 
+(If installed on your PATH, you can just use `video-understanding` instead of `./video-understanding.sh`.)
+
+**Default interval:** 500ms (use `--interval 500ms`, `--interval 0.5`, `--interval 2s`, or the second positional argument).
+
 Config via `VU_PROFILE=local` (default) or `grok`. See `config/profiles/`.
-Use --interval (or DEFAULT_INTERVAL env/profile, or second positional) to set sampling interval. Supports values like 0.5, 500ms, 2s. Default: 500ms. Profiles can set DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX.
+You can also set `DEFAULT_INTERVAL` (in env, profile, or on the command line before the script).
 
 Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
@@ -91,7 +100,7 @@ Then tell your agent: *"read `demo_understand/AGENT.md` and do it."*
 
 | file | what |
 |---|---|
-| `frames/tNNmNNs.jpg` (or tNNmNNsNNNms.jpg) | one frame per interval; **filename = exact timestamp** (supports 0.5s = 500ms) |
+| `frames/tNNmNNs.jpg` (or `tNNmNNsNNNms.jpg`) | one frame per interval; **filename = exact timestamp** (e.g. every 500ms) |
 | `transcript.srt` | timestamped captions |
 | `transcript.txt` / `.json` | same transcript, other formats |
 | `manifest.json` | duration, fps, interval, frame→time map |
@@ -114,19 +123,24 @@ Post-processing removes non-speech and simple repetitions (inspired by x-studio)
 | `FRAME_QUALITY` | `3` | ffmpeg `-q:v`, 2 best … 31 worst |
 
 ```sh
-VU_MODEL=base ./video-understanding.sh demo.mov            # smaller/faster, lower accuracy
+VU_MODEL=base ./video-understanding.sh demo.mov --interval 1s   # smaller/faster, lower accuracy
 WHISPER_MODEL=/path/ggml-large-v3.bin ./video-understanding.sh demo.mov
 ```
 
 ## X video support (integrated)
 
-X post videos are supported directly by the main `./video-understanding.sh <x-url>`.
+X post videos are supported directly:
 
-- Default (local profile): CLI uses xurl to resolve video URL from post, then curl download.
-- CDN direct: --direct <mp4-url> (for manual or when using grok profile).
-- Grok profile: Grok's built-in X tools ("grok cli") find the post and supply the video URL; CLI uses --direct or the skill provides it.
+```sh
+./video-understanding.sh https://x.com/user/status/123
+./video-understanding.sh https://x.com/user/status/123 --interval 500ms --direct https://video.twimg.com/...mp4
+```
 
-See script --help or SKILL.md. Works for any agent.
+- Default (local profile): uses `xurl` to resolve the video URL from the post, then downloads with `curl`.
+- `--direct <mp4-url>`: for manual CDN URLs or when using the Grok profile (Grok supplies the URL via its X tools).
+- Grok profile: Grok's built-in X tools find the post and provide the direct URL.
+
+See `./video-understanding.sh --help` or SKILL.md. Works for any agent.
 
 ## Configuration profiles
 
@@ -135,12 +149,12 @@ Pick local vs cloud-focused setups via `VU_PROFILE=local` (default) or `grok`.
 - Profiles: `config/profiles/<name>.sh`
 - Local (current): fully local whisper.cpp + xurl + curl. No cloud.
 - Grok: agent uses built-in X tools to supply video URL via --direct; mechanical stages stay local.
-- All env vars from profile can be overridden on the command line.
+- Interval is controlled with `--interval` (or `DEFAULT_INTERVAL` env / profile). Default: `500ms`.
 - Keeps the tool portable across agents.
 
 Example:
 ```sh
-VU_PROFILE=local ./video-understanding.sh demo.mov
+VU_PROFILE=local ./video-understanding.sh demo.mov --interval 1
 ```
 
 ## Examples
@@ -151,6 +165,10 @@ VU_PROFILE=local ./video-understanding.sh demo.mov
 
 # X post (uses xurl if installed)
 ./video-understanding.sh https://x.com/user/status/123 --name post123
+
+# custom interval
+./video-understanding.sh ~/clip.mov --interval 2s
+./video-understanding.sh https://x.com/user/status/123 --interval 500ms --name post123
 
 # force re-download + custom suffix via profile/env
 DEFAULT_OUTDIR_SUFFIX=_review ./video-understanding.sh https://x.com/... --direct https://...mp4 --force
@@ -163,6 +181,7 @@ VU_PROFILE=grok ./video-understanding.sh https://x.com/.../123 --direct https://
 
 - Frames are extracted by **seeking to each exact timestamp** (`ffmpeg -ss`), so
   the filename never drifts from the real frame time — unlike the `fps=1/N` filter.
-- Fixed-interval sampling: use --interval 500ms (or 0.5) for fast-cut content, larger (e.g. 3s) for talking-head/screencast.
+- Fixed-interval sampling: `--interval 500ms` (or `0.5`) for fast-cut content / demos,
+  larger values (e.g. `--interval 3s`) for talking-head/screencast.
 - All local. No cloud, no API key. Whisper `large-v3-turbo` is the current
   best general model — there's no newer Whisper architecture to switch to.

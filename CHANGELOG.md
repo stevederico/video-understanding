@@ -1,5 +1,12 @@
 # To-do list
 
+0.9.0
+
+  Update README
+  Document --interval flag
+  Clarify 500ms default
+  Improve examples
+
 0.8.0
 
   Add --interval parameter
