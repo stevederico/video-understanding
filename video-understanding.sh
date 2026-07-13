@@ -180,19 +180,20 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
         echo ">> Resolving video URL via xurl read $POST_ID (default)..."
         POST_JSON=$(xurl read "$POST_ID" 2>/dev/null || echo '{}')
         if [ "$POST_JSON" != "{}" ]; then
-          if command -v jq >/dev/null 2>&1; then
-            # Prefer the highest-bitrate mp4 variant (sort desc, take first).
-            DIRECT_URL=$(echo "$POST_JSON" | jq -r '
-              [ ( .media[]?.video_info?.variants[]?,
-                  .extended_entities?.media[]?.video_info?.variants[]? )
-                | select(.url and (.url | contains("video.twimg.com") and endswith(".mp4"))) ]
-              | sort_by(.bitrate // 0) | reverse | .[0].url // empty' 2>/dev/null | head -1 || true)
-            if [ -z "$DIRECT_URL" ]; then
-              # Fallback: any twimg mp4 string anywhere in the JSON (structure varies).
-              DIRECT_URL=$(echo "$POST_JSON" | jq -r '.. | strings | select(contains("video.twimg.com") and endswith(".mp4"))' 2>/dev/null | head -1 || true)
-            fi
+          if command -v node >/dev/null 2>&1; then
+            # Parse xurl JSON with node (no jq dep): recursively collect video
+            # variants, pick the highest-bitrate video.twimg.com mp4.
+            DIRECT_URL=$(printf '%s' "$POST_JSON" | node -e '
+              const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const vs = [];
+              const walk = o => { if (o && typeof o === "object") { if (Array.isArray(o.variants)) vs.push(...o.variants); Object.values(o).forEach(walk); } };
+              walk(d);
+              const best = vs.filter(v => v && v.url && v.url.includes("video.twimg.com") && v.url.endsWith(".mp4"))
+                             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+              if (best) process.stdout.write(best.url);
+            ' 2>/dev/null || true)
           else
-            echo ">> jq not found; cannot parse xurl JSON. Provide --direct <url>"
+            echo ">> node not found; cannot parse xurl JSON. Provide --direct <url>"
             DIRECT_URL=""
           fi
           if [ -n "$DIRECT_URL" ]; then
@@ -286,8 +287,12 @@ if [ -f "$OUTDIR/transcript.txt" ]; then
 fi
 
 # Structured segments (inspired by x-studio: timestamp, speaker, text)
-if [ -f "$OUTDIR/transcript.json" ] && command -v jq >/dev/null; then
-  jq '[ .segments[] | {timestamp: (.start | tostring), speaker: null, text: .text } ]' "$OUTDIR/transcript.json" > "$OUTDIR/segments.json" 2>/dev/null || true
+if [ -f "$OUTDIR/transcript.json" ] && command -v node >/dev/null; then
+  node -e '
+    const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const out = (d.segments || []).map(s => ({timestamp: String(s.start), speaker: null, text: s.text}));
+    process.stdout.write(JSON.stringify(out, null, 2));
+  ' "$OUTDIR/transcript.json" > "$OUTDIR/segments.json" 2>/dev/null || true
 fi
 
 # --- frames at fixed interval, timestamp-named ------------------------------

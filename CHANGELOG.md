@@ -1,5 +1,11 @@
 # To-do list
 
+0.14.0
+
+  Replace jq with node -e
+  Drop jq dependency
+  Update setup docs to node
+
 0.13.0
 
   Auto-install jq in skill

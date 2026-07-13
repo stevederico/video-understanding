@@ -26,15 +26,15 @@ into `~/.local/bin`, downloads `ggml-large-v3-turbo`, and installs ffmpeg:
 git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh
 ```
 
-Then `brew install jq` (used to parse X responses and emit `segments.json`), and make sure `~/.local/bin` is on your `PATH`.
+Make sure `~/.local/bin` is on your `PATH`. **node** is also used (to parse X responses and emit `segments.json`) — it's already on most dev machines; `brew install node` if not.
 
-**For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl or jq.
+**For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl.
 
 <details>
 <summary>Manual dependency setup (Linux/Windows, or by hand)</summary>
 
 1. **ffmpeg** — `brew install ffmpeg` · `sudo apt install ffmpeg` · [ffmpeg.org](https://ffmpeg.org/download.html)
-2. **jq** — `brew install jq` · `sudo apt install jq` (needed for X-URL parsing + `segments.json`)
+2. **node** — [nodejs.org](https://nodejs.org) · `brew install node` · `sudo apt install nodejs` (parses X-URL JSON + emits `segments.json`; usually already installed)
 3. **whisper.cpp** — build from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) and put `whisper-cli` on PATH (Metal-accelerated automatically on Apple Silicon):
    ```sh
    git clone https://github.com/ggml-org/whisper.cpp.git ~/.local/opt/whisper.cpp
@@ -89,7 +89,7 @@ Then tell your agent: *"read `clip_understand/AGENT.md` and do it."*
 
 ## X videos & profiles
 
-- **local** (default): needs [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `jq` to resolve the post's highest-bitrate mp4; `curl` downloads it (cached in `~/.cache/video-understanding/x-videos`). No xurl? Pass the mp4 yourself with `--direct`.
+- **local** (default): needs [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` to resolve the post's highest-bitrate mp4; `curl` downloads it (cached in `~/.cache/video-understanding/x-videos`). No xurl? Pass the mp4 yourself with `--direct`.
 - **grok**: Grok's built-in X tools find the post and supply the URL via `--direct` — no xurl needed. Extraction stays local in both.
 
 ## Notes
