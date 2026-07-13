@@ -1,5 +1,12 @@
 # To-do list
 
+0.12.0
+
+  Rewrite README, cut redundancy
+  Merge Use/Examples/profiles
+  Collapse manual setup to details
+  Single options table
+
 0.11.0
 
   Recommend ask-transcribe-cli first
