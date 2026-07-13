@@ -23,20 +23,29 @@ See config/profiles/local.sh for the current local-focused setup.
 - Use `video-understanding` (the CLI on PATH, or ~/.agents/.../video-understanding.sh) for stage 1; supports --interval 500ms etc.
 - Follow the generated `AGENT.md` exactly for stage 2.
 - Output goes to `<video>_understand/` (or custom dir). The agent then works inside that folder.
-- If `whisper-cli` or `ffmpeg` is missing, auto-install via `ask-transcribe-cli` (see Setup below) before stage 1 — don't ask, just bootstrap.
+- If `whisper-cli`, `ffmpeg`, or `jq` is missing, auto-install before stage 1 (see Setup below) — don't ask, just bootstrap. `xurl` is optional (X-by-URL only) and needs auth; prefer `--direct` if it's absent.
 
 ## Setup (auto-install deps)
-Before stage 1, ensure the toolchain exists. If either is absent, run the installer — it builds whisper.cpp (Metal), symlinks `whisper-cli` to `~/.local/bin`, downloads `ggml-large-v3-turbo`, and installs `ffmpeg`:
+Before stage 1, ensure the toolchain exists. Bootstrap what's missing — don't ask:
 
 ```bash
+# Core: whisper-cli + ffmpeg + model (builds whisper.cpp Metal, symlinks to ~/.local/bin)
 if ! command -v whisper-cli >/dev/null || ! command -v ffmpeg >/dev/null; then
   DIR="$HOME/.local/opt/ask-transcribe-cli"
   [ -d "$DIR" ] || git clone https://github.com/stevederico/ask-transcribe-cli.git "$DIR"
   ( cd "$DIR" && bash install-stt.sh )
 fi
+# jq: required to parse xurl JSON AND to emit segments.json. Cheap, install it.
+command -v jq >/dev/null || brew install jq
 ```
 
 macOS Apple Silicon. `install-stt.sh` needs `cmake`/`ffmpeg` (Homebrew) + `git`/`clang` (Xcode CLT); it prints the `brew install` line if a build dep is missing. Ensure `~/.local/bin` is on `PATH`.
+
+### X-by-URL needs xurl (optional)
+`xurl` (xAI's X API CLI) resolves a post's video URL. It is **not** auto-installed and needs X API credentials in `~/.xurl` — so it can't be fully hands-off. When resolving an X URL:
+- **Preferred (no xurl needed):** if you (the agent) have your own X tools, fetch the post and pass the mp4 with `--direct <url>`, or run the `grok` profile.
+- **Local profile with xurl:** requires `xurl` on PATH **and** `jq`. If either is missing, fall back to `--direct`. Install: [`github.com/xdevplatform/xurl`](https://github.com/xdevplatform/xurl) (Go binary), then `xurl auth` with X API keys.
+- Local video files and `--direct` never touch xurl or jq's X path.
 
 ## Sourcing videos (especially from X)
 - **Direct X link or post ID**: Pass to CLI.

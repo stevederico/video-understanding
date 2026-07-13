@@ -26,13 +26,16 @@ into `~/.local/bin`, downloads `ggml-large-v3-turbo`, and installs ffmpeg:
 git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
+Then `brew install jq` (used to parse X responses and emit `segments.json`), and make sure `~/.local/bin` is on your `PATH`.
+
+**For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl or jq.
 
 <details>
 <summary>Manual dependency setup (Linux/Windows, or by hand)</summary>
 
 1. **ffmpeg** — `brew install ffmpeg` · `sudo apt install ffmpeg` · [ffmpeg.org](https://ffmpeg.org/download.html)
-2. **whisper.cpp** — build from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) and put `whisper-cli` on PATH (Metal-accelerated automatically on Apple Silicon):
+2. **jq** — `brew install jq` · `sudo apt install jq` (needed for X-URL parsing + `segments.json`)
+3. **whisper.cpp** — build from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) and put `whisper-cli` on PATH (Metal-accelerated automatically on Apple Silicon):
    ```sh
    git clone https://github.com/ggml-org/whisper.cpp.git ~/.local/opt/whisper.cpp
    cd ~/.local/opt/whisper.cpp
@@ -40,7 +43,8 @@ Make sure `~/.local/bin` is on your `PATH`.
    ln -sf ~/.local/opt/whisper.cpp/build/bin/whisper-cli ~/.local/bin/whisper-cli
    ```
    Don't move `build/` afterward — the symlink's dylib rpaths are absolute; rebuild in place if you do.
-3. **Model** — `bash ~/.local/opt/whisper.cpp/models/download-ggml-model.sh large-v3-turbo` (~1.5G). Lands at the default path the script expects.
+4. **Model** — `bash ~/.local/opt/whisper.cpp/models/download-ggml-model.sh large-v3-turbo` (~1.5G). Lands at the default path the script expects.
+5. **xurl** (optional, X-by-URL only) — [`github.com/xdevplatform/xurl`](https://github.com/xdevplatform/xurl), then `xurl auth`. Skip it if you always pass `--direct`.
 </details>
 
 ## Use
@@ -85,8 +89,8 @@ Then tell your agent: *"read `clip_understand/AGENT.md` and do it."*
 
 ## X videos & profiles
 
-- **local** (default): `xurl` resolves the post's highest-bitrate mp4, `curl` downloads it (cached in `~/.cache/video-understanding/x-videos`).
-- **grok**: Grok's built-in X tools find the post and supply the URL via `--direct`. Extraction stays local in both.
+- **local** (default): needs [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `jq` to resolve the post's highest-bitrate mp4; `curl` downloads it (cached in `~/.cache/video-understanding/x-videos`). No xurl? Pass the mp4 yourself with `--direct`.
+- **grok**: Grok's built-in X tools find the post and supply the URL via `--direct` — no xurl needed. Extraction stays local in both.
 
 ## Notes
 

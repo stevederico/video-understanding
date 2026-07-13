@@ -1,5 +1,12 @@
 # To-do list
 
+0.13.0
+
+  Auto-install jq in skill
+  Document xurl X prereq + auth
+  Fix oversold X-URL claims
+  Note deps in manual setup
+
 0.12.0
 
   Rewrite README, cut redundancy
