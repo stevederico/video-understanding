@@ -8,9 +8,18 @@ Two stages:
 1. **`video-understanding.sh`** — mechanical extraction (ffmpeg + local whisper.cpp). No AI, deterministic.
 2. **The agent** — reads the frames (filenames are timestamps) + `transcript.srt`, correlates picture↔speech, and writes `understanding.md` following the generated `AGENT.md`.
 
+> **Platform:** built for **macOS Apple Silicon** — one-command setup, Metal-accelerated
+> whisper. Linux/Windows work too, but via the manual dependency steps (no turnkey installer).
+
 ## Install
 
-Get the tool:
+As an agent skill (Claude Code, Cursor, etc.):
+
+```sh
+npx skills add stevederico/video-understanding
+```
+
+Or grab the standalone CLI:
 
 ```sh
 git clone https://github.com/stevederico/video-understanding.git
@@ -73,6 +82,36 @@ Then tell your agent: *"read `clip_understand/AGENT.md` and do it."*
 | `segments.json` | `{timestamp, speaker, text}` per segment |
 | `manifest.json` | duration, fps, interval, frame→time map |
 | `AGENT.md` | stage-2 instructions for the agent |
+
+## What you get
+
+Stage 2 produces `understanding.md` — the agent's full read of the video. Shape:
+
+```markdown
+# Understanding: <video>
+
+**Summary** — 2–4 sentences: what it is and its purpose.
+
+## Timeline
+| time  | on-screen                    | spoken / topic              |
+|-------|------------------------------|-----------------------------|
+| 0:00  | title card "Q3 Launch"       | intro, names the product    |
+| 0:12  | dashboard demo, cursor on… | walks through the metrics   |
+| 1:45  | code diff on screen          | explains the migration      |
+
+## Key visuals
+- 0:12 — dashboard shows 3 KPIs the narration never mentions
+- 1:45 — on-screen code corrects a term the audio got wrong
+
+## Full takeaways
+- <claims, steps, conclusions, anything actionable>
+
+## Corrected transcript
+- 1:45 "MPX" → "MDX" (visible on screen)
+```
+
+The point: the agent reads **every frame against the captions**, so it catches
+on-screen text, demos, and corrections a transcript alone would miss.
 
 ## Options
 

@@ -1,5 +1,12 @@
 # To-do list
 
+0.15.0
+
+  List on skills.sh, add install cmd
+  Tighten skill description
+  Add sample understanding.md output
+  State macOS-first platform scope
+
 0.14.0
 
   Replace jq with node -e

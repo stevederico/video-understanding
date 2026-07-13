@@ -1,7 +1,7 @@
 ---
 name: video-understanding
 description: >
-  Turn any video (local file or from X) into a full AI understanding: use video-understanding.sh for frames + transcript, then review as agent to produce understanding.md. Supports sourcing videos from X via search or direct link using safe curl download + local whisper. Use when user runs /video-understanding, or says "video understand this X post", "process this video with full understanding", "get frames and transcript then analyze".
+  Turn any video (local file or X post) into a complete AI understanding: extract timestamped frames + a local-whisper transcript, then correlate what's on screen with what's said into an understanding.md. Fully local — no cloud, no API key. Use when the user says "video understand this", "understand this X post", "analyze this video", or runs /video-understanding.
 ---
 
 # video-understanding
