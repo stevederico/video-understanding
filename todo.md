@@ -1,4 +1,3 @@
-- open-source this: make repo public + add MIT LICENSE
 - eve framework
 - profiles
 - switch for download method
