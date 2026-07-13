@@ -71,7 +71,10 @@ Copy `.env.example` to `.env` (gitignored) and fill it in — the script loads
 Skip the Mux keys and BYOK still transcribes with zero install, but frames fall
 back to local `ffmpeg` (so you'd need that one tool).
 
-**For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl.
+**Inputs:** a local file, a direct video-file URL (hosted anywhere), or an X post.
+X posts are resolved through the X API via [`xurl`](https://github.com/xdevplatform/xurl)
+(authed with your X API keys) — or skip that and just pass a direct video URL /
+local path. `xurl` is only needed to resolve an `x.com/…` link.
 
 <details>
 <summary>Manual dependency setup (Linux/Windows, or by hand)</summary>
@@ -100,9 +103,10 @@ back to local `ffmpeg` (so you'd need that one tool).
 |---|---|
 | `./video-understanding.sh clip.mov` | local file, a frame every 500ms (default) |
 | `./video-understanding.sh clip.mov --interval 2s` | a frame every 2s |
-| `./video-understanding.sh https://x.com/u/status/123 --name post` | X post — `xurl` resolves the video |
-| `… --direct https://video.twimg.com/…mp4` | supply the CDN URL manually |
-| `… --force` | re-download even if the X video is cached |
+| `./video-understanding.sh https://example.com/talk.mp4 --name talk` | a direct video-file URL (hosted anywhere) |
+| `./video-understanding.sh https://x.com/u/status/123 --name post` | an X post — resolved via the X API (`xurl`) |
+| `… --direct https://example.com/talk.mp4` | pass the video URL explicitly (skips resolving) |
+| `… --force` | re-download even if the video is cached |
 
 Then tell your agent: *"read `clip_understand/AGENT.md` and do it."*
 (Installed on your PATH? Use `video-understanding` instead of `./video-understanding.sh`.)
@@ -161,13 +165,15 @@ on-screen text, demos, and corrections a transcript alone would miss.
 | `VU_PROFILE` | `local` | `local`, `byok` (xAI STT + Mux), or `grok` (agent supplies `--direct`) |
 | `STT_BACKEND` | `local` | `local` (whisper.cpp) or `xai` (needs `XAI_API_KEY`) |
 | `FRAME_BACKEND` | `local` | `local` (ffmpeg) or `mux` (needs `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET`; falls back to local) |
-| `XAI_API_KEY` | — | env only, for `STT_BACKEND=xai` |
+| `XAI_API_KEY` | — | env/`.env` only, for `STT_BACKEND=xai` |
+| `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` | — | env/`.env` only, for `FRAME_BACKEND=mux` |
 | `STT_WORDS_PER_CUE` | `10` | xAI words grouped into ~N-word SRT cues |
 
-## X videos & profiles
+## Sources & profiles
 
-- **local** (default): needs [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` to resolve the post's highest-bitrate mp4; `curl` downloads it (cached in `~/.cache/video-understanding/x-videos`). No xurl? Pass the mp4 yourself with `--direct`.
-- **grok**: Grok's built-in X tools find the post and supply the URL via `--direct` — no xurl needed. Extraction stays local in both.
+- **Local file / direct URL**: pass a path or any direct video-file URL — no X involved, no xurl.
+- **X post** — **local** profile: [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` resolve the post's video via the X API; the file is cached under `~/.cache/video-understanding`. No xurl? Pass the video URL with `--direct`.
+- **X post** — **grok** profile: Grok's built-in X tools find the post and supply the URL via `--direct`. Extraction stays local either way.
 
 ## Notes
 

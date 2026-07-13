@@ -15,7 +15,7 @@ export VU_PROFILE
 # ----------------------------------------
 : "${X_VIDEO_RESOLVER:=xurl}"   # xurl (local CLI) or direct (manual)
 export X_VIDEO_RESOLVER
-: "${X_DOWNLOAD_METHOD:=curl}"  # always curl from twimg CDN
+: "${X_DOWNLOAD_METHOD:=curl}"  # curl the resolved video-file URL
 export X_DOWNLOAD_METHOD
 : "${X_CACHE_DIR:=$HOME/.cache/video-understanding/x-videos}"
 export X_CACHE_DIR

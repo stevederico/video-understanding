@@ -13,7 +13,7 @@ export VU_PROFILE
 # STAGE: X Sourcing / Download
 # Grok's built-in X tools (the "grok cli" / tools) are used to find posts and provide video URLs.
 # The CLI script does NOT call xurl; it expects --direct or the skill/agent to supply the URL.
-# Download still uses curl from CDN.
+# Download still uses curl on the supplied video-file URL.
 # ----------------------------------------
 : "${X_VIDEO_RESOLVER:=grok}"   # "grok" means agent provides URL via tools/skill
 export X_VIDEO_RESOLVER

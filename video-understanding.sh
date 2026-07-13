@@ -105,21 +105,23 @@ Options:
   --force, --no-cache  Re-download even if cached video exists
   -h, --help          Show this help
 
-Config: VU_PROFILE=local (default) or grok. See config/profiles/*.sh
-Interval and output dir suffix can be controlled via --interval, DEFAULT_INTERVAL (500ms default), or positional.
+Modes (VU_PROFILE): local (default, whisper.cpp + ffmpeg, no keys) | byok
+  (xAI STT + Mux frames, needs XAI_API_KEY [+ MUX_TOKEN_ID/SECRET], installs
+  nothing) | grok (agent supplies the X video URL via --direct). See
+  config/profiles/*.sh. Backends are also settable directly:
+  STT_BACKEND=local|xai, FRAME_BACKEND=local|mux.
+Interval and output dir suffix: --interval, DEFAULT_INTERVAL (500ms default), or positional.
 
-Examples (xurl default for X):
+Examples:
   ./video-understanding.sh demo.mov
   ./video-understanding.sh demo.mov --interval 500ms
+  XAI_API_KEY=… VU_PROFILE=byok ./video-understanding.sh demo.mov       # no install
   VU_PROFILE=local ./video-understanding.sh https://x.com/.../status/123 --name my-post
   ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --name my-post --interval 1
   VU_PROFILE=grok ./video-understanding.sh https://x.com/... --direct <url> --name p
-  DEFAULT_INTERVAL=2 ./video-understanding.sh local.mov --interval 2 myout_review
   ./video-understanding.sh x-post.mp4 --force --name retry --interval 0.25
 
-When VU_PROFILE=grok: Grok's built-in X tools handle finding posts and supplying video URLs (CLI expects --direct or the skill provides it).
-CLI defaults to xurl for local profile. Use --direct for manual CDN.
-Unified CLI for X or local (full pipeline). Configurable via profiles.
+BYOK keys come from the environment (or a gitignored .env). Never hardcoded.
 EOF
       exit 0
       ;;
@@ -177,7 +179,7 @@ fi
 # = xAI STT + Mux frames (bring your own keys). Each is independent.
 : "${STT_BACKEND:=local}"          # local (whisper.cpp) | xai
 : "${FRAME_BACKEND:=local}"        # local (ffmpeg)      | mux
-: "${XAI_STT_URL:=https://api.x.ai/v1/stt}"   # xAI: POST -F file=@wav, returns {text,words[]}
+: "${XAI_STT_URL:=https://api.x.ai/v1/stt}"   # xAI: POST -F file=@video, returns {text,duration,words[]}
 : "${STT_WORDS_PER_CUE:=10}"       # group xAI words into ~N-word SRT cues
 # Keys come from the environment — NEVER hardcoded: XAI_API_KEY, MUX_TOKEN_ID/SECRET.
 
@@ -252,9 +254,30 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
     exit 1
   fi
   VIDEO="$VIDEO_FILE"
+elif [[ "$VIDEO" =~ ^https?:// || -n "$DIRECT_URL" ]]; then
+  # Generic direct video-file URL (hosted anywhere) — download to cache, treat
+  # as a local file. --direct overrides the positional URL.
+  SRC_URL="${DIRECT_URL:-$VIDEO}"
+  if [[ -z "$SLUG" ]]; then
+    SLUG=$(basename "${SRC_URL%%\?*}"); SLUG="${SLUG%.*}"; [[ -n "$SLUG" ]] || SLUG="video"
+  fi
+  [[ -z "$OUTDIR" ]] && OUTDIR="${SLUG}${DEFAULT_OUTDIR_SUFFIX}"
+  DL_DIR="$CACHE_DIR/downloads"; mkdir -p "$DL_DIR"
+  VIDEO_FILE="$DL_DIR/${SLUG}.mp4"
+  if [[ ! -f "$VIDEO_FILE" || -n "$FORCE_DOWNLOAD" ]]; then
+    echo ">> Downloading video…"
+    curl -L --fail --retry 2 --progress-bar -o "$VIDEO_FILE" "$SRC_URL" \
+      || { echo "error: download failed: $SRC_URL" >&2; exit 1; }
+  fi
+  [[ -s "$VIDEO_FILE" ]] || { echo "error: download failed or empty: $SRC_URL" >&2; exit 1; }
+  VIDEO="$VIDEO_FILE"
 else
   if [[ -z "$OUTDIR" ]]; then
-    OUTDIR="${VIDEO%.*}${DEFAULT_OUTDIR_SUFFIX}"
+    if [[ -n "$SLUG" ]]; then
+      OUTDIR="${SLUG}${DEFAULT_OUTDIR_SUFFIX}"   # --name applies to local files too
+    else
+      OUTDIR="${VIDEO%.*}${DEFAULT_OUTDIR_SUFFIX}"
+    fi
   fi
 fi
 

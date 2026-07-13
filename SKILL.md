@@ -1,7 +1,7 @@
 ---
 name: video-understanding
 description: >
-  Turn any video (local file or X post) into a complete AI understanding: extract timestamped frames + a local-whisper transcript, then correlate what's on screen with what's said into an understanding.md. Fully local — no cloud, no API key. Use when the user says "video understand this", "understand this X post", "analyze this video", or runs /video-understanding.
+  Turn any video (local file or X post) into a complete AI understanding: extract timestamped frames + a transcript, then correlate what's on screen with what's said into an understanding.md. Runs fully local (whisper.cpp + ffmpeg, no keys) or install-free via BYOK (xAI STT + Mux). Use when the user says "video understand this", "understand this X post", "analyze this video", or runs /video-understanding.
 ---
 
 # video-understanding
@@ -18,8 +18,8 @@ Env vars / --interval override.
 See config/profiles/local.sh for the current local-focused setup.
 
 ## Core rules
-- Use only local tools: ffmpeg + whisper.cpp (whisper-cli). No cloud APIs.
-- For X videos: always use direct CDN download with `curl -L` from video.twimg.com. Never yt-dlp or YouTube links.
+- Two modes: **local** (whisper.cpp + ffmpeg, offline, no keys — the default) or **byok** (`VU_PROFILE=byok`: xAI STT + Mux frames, installs nothing, needs `XAI_API_KEY` [+ Mux creds]). Both yield identical output files.
+- Inputs: a local file, a direct video-file URL (hosted anywhere), or an X post (resolved through the X API via `xurl`). Never yt-dlp or YouTube links.
 - Use `video-understanding` (the CLI on PATH, or ~/.agents/.../video-understanding.sh) for stage 1; supports --interval 500ms etc.
 - Follow the generated `AGENT.md` exactly for stage 2.
 - Output goes to `<video>_understand/` (or custom dir). The agent then works inside that folder.
@@ -51,18 +51,17 @@ macOS Apple Silicon. `install-stt.sh` needs `cmake`/`ffmpeg` (Homebrew) + `git`/
 - **Direct X link or post ID**: Pass to CLI.
   - local: defaults to xurl read to resolve video URL then curl.
   - grok: Grok's built-in X tools ("grok cli") find the post & interact with X, providing video URLs (CLI uses --direct or skill supplies).
-- Use `--direct <mp4-url>` for manual CDN (bypass resolver).
+- Use `--direct <video-url>` to pass a direct video-file URL explicitly (bypasses X resolving).
 - Search X: agent X tools find post, pass URL/ID to CLI.
-- CLI handles download:
+- CLI handles fetching:
   ```bash
   video-understanding https://x.com/.../status/123
-  # manual CDN or force re-download
-  video-understanding https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --force --interval 500ms
-  VU_PROFILE=local video-understanding https://... --name post
+  video-understanding https://example.com/talk.mp4 --name talk        # direct file URL
+  video-understanding https://x.com/.../status/123 --direct https://example.com/talk.mp4 --force
   ```
-- Non-X: local path.
+- Or just a local path: `video-understanding ~/clip.mov`.
 
-Config: `VU_PROFILE=local` (xurl) or `grok` (Grok's X tools supply --direct). See config/profiles/. Env overrides.
+Config: `VU_PROFILE=local` (default), `byok` (xAI STT + Mux, install-free), or `grok` (Grok's X tools supply --direct). See config/profiles/. Env overrides.
 
 ## Stage 1: Mechanical extraction
 Run the project script on the (downloaded or local) video:
@@ -76,7 +75,7 @@ video-understanding /path/to/video.mp4 [interval] [output_dir] [--interval <val>
 - Outputs: `frames/tNNmNNs.jpg` (or ...sNNNms.jpg for subsec), `transcript.srt`, `transcript.txt`, `transcript.json`, `manifest.json`, `AGENT.md`
 - Env: `VU_MODEL=large-v3-turbo`, `WHISPER_MODEL=...` etc. as documented in README.
 
-X videos are handled directly by the main `video-understanding` (or full path to script); use --interval 500ms etc. (xurl default for resolving CDN URL; use --direct to provide manually).
+X posts are resolved through the X API (`xurl`) by the main `video-understanding` script; use `--direct <video-url>` to skip resolving and pass the file URL yourself.
 
 ## Stage 2: Agent review
 After the script runs, point to the output folder:
@@ -105,10 +104,9 @@ The AGENT.md instructs:
 The tool works for any video content. Use it to deeply analyze talks, demos, interviews, etc. from X or local files.
 
 ## Tips
-- For X videos, prefer the CDN curl method shown above.
 - Adjust interval: --interval 500ms (or 0.5) for fast cuts/action, 1-3s for typical, larger (5s+) for slow talking-head.
 - After extraction, the agent works entirely from the output folder files.
-- All local and deterministic for stage 1.
+- Stage 1 is deterministic (no AI). local mode is fully offline; byok sends the video to xAI/Mux.
 
 ## Transcript quality (adopted from x-studio patterns)
 - Script now applies post-processing: removes non-speech markers, simple repetitions.
@@ -117,10 +115,11 @@ The tool works for any video content. Use it to deeply analyze talks, demos, int
 - For X: videos cached in ~/.cache/video-understanding/x-videos (resume/skip re-download).
 
 ## Config profiles
-- Source with `VU_PROFILE=local` (default) or `grok`.
+- Source with `VU_PROFILE=local` (default), `byok`, or `grok`.
 - Profiles live in `config/profiles/<name>.sh`
-- Local profile: fully local whisper + xurl + curl.
-- Grok profile: agent uses native X tools + passes URL with --direct; extraction (ffmpeg/whisper) is always local.
+- **local**: whisper.cpp + ffmpeg, offline, no keys.
+- **byok**: xAI STT + Mux frames (install-free); `XAI_API_KEY` [+ `MUX_TOKEN_ID`/`SECRET`] from env or `.env`. Falls back to local ffmpeg for frames if no Mux creds.
+- **grok**: agent uses native X tools + passes URL with --direct; extraction is local.
 - Profiles also control DEFAULT_INTERVAL and DEFAULT_OUTDIR_SUFFIX (default 500ms).
 - Override via --interval, env (DEFAULT_INTERVAL=500ms), or positional. Env takes precedence.
 - Keeps everything portable for any agent.

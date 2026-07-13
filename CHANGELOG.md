@@ -1,5 +1,12 @@
 # To-do list
 
+0.19.0
+
+  Accept any direct video-file URL
+  Honor --name for local files
+  Reframe X sourcing, drop CDN language
+  Help + SKILL cover byok mode
+
 0.18.0
 
   Optional .env for BYOK keys
