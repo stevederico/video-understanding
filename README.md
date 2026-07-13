@@ -4,6 +4,12 @@ Your agent's movie critic. Turns any video (local file or X post) into something
 AI agent can fully understand: timestamped frames + an SRT transcript, which the
 agent then reviews to write a complete `understanding.md`.
 
+Install as an agent skill (Claude Code, Cursor, and more) via [skills.sh](https://www.skills.sh):
+
+```sh
+npx skills add stevederico/video-understanding
+```
+
 Two stages:
 1. **`video-understanding.sh`** — mechanical extraction (frames + transcript). No AI, deterministic.
 2. **The agent** — reads the frames (filenames are timestamps) + `transcript.srt`, correlates picture↔speech, and writes `understanding.md` following the generated `AGENT.md`.
@@ -24,13 +30,8 @@ Two stages:
 
 ## Install
 
-As an agent skill (Claude Code, Cursor, etc.):
-
-```sh
-npx skills add stevederico/video-understanding
-```
-
-Or grab the standalone CLI:
+Installed as a skill (above), the CLI is available to your agent. To use it
+standalone, grab the repo:
 
 ```sh
 git clone https://github.com/stevederico/video-understanding.git
