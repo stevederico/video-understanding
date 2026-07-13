@@ -5,11 +5,19 @@ AI agent can fully understand: timestamped frames + an SRT transcript, which the
 agent then reviews to write a complete `understanding.md`.
 
 Two stages:
-1. **`video-understanding.sh`** — mechanical extraction (ffmpeg + local whisper.cpp). No AI, deterministic.
+1. **`video-understanding.sh`** — mechanical extraction (frames + transcript). No AI, deterministic.
 2. **The agent** — reads the frames (filenames are timestamps) + `transcript.srt`, correlates picture↔speech, and writes `understanding.md` following the generated `AGENT.md`.
 
-> **Platform:** built for **macOS Apple Silicon** — one-command setup, Metal-accelerated
-> whisper. Linux/Windows work too, but via the manual dependency steps (no turnkey installer).
+## Two modes
+
+Stage 1 runs in one of two modes — pick per `VU_PROFILE`:
+
+| mode | transcription | frames | needs | best for |
+|---|---|---|---|---|
+| **local** (default) | whisper.cpp | ffmpeg | one-time whisper.cpp build (macOS Apple Silicon turnkey) | private, offline, no keys |
+| **BYOK** | xAI STT | Mux → local ffmpeg fallback | `XAI_API_KEY` (+ optional Mux creds) | any OS, no whisper build |
+
+BYOK drops the heavy whisper.cpp model + build — just needs `ffmpeg` + `node` + your key. Both modes produce identical output files.
 
 ## Install
 
@@ -26,16 +34,33 @@ git clone https://github.com/stevederico/video-understanding.git
 cd video-understanding && chmod +x video-understanding.sh
 ```
 
-Install the dependencies (**ffmpeg** + whisper.cpp's `whisper-cli` + a model). On
-macOS Apple Silicon, [`ask-transcribe-cli`](https://github.com/stevederico/ask-transcribe-cli)
-does all of it in one command — builds whisper.cpp (Metal), symlinks `whisper-cli`
-into `~/.local/bin`, downloads `ggml-large-v3-turbo`, and installs ffmpeg:
+### Get started — local mode (macOS Apple Silicon, no keys)
+
+Install the deps in one command — [`ask-transcribe-cli`](https://github.com/stevederico/ask-transcribe-cli)
+builds whisper.cpp (Metal), symlinks `whisper-cli` into `~/.local/bin`, downloads
+`ggml-large-v3-turbo`, and installs ffmpeg:
 
 ```sh
 git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh
+# then:
+./video-understanding.sh ~/clip.mov
 ```
 
-Make sure `~/.local/bin` is on your `PATH`. **node** is also used (to parse X responses and emit `segments.json`) — it's already on most dev machines; `brew install node` if not.
+Ensure `~/.local/bin` is on your `PATH`.
+
+### Get started — BYOK mode (any OS, no whisper build)
+
+Only needs `ffmpeg` + `node` + an xAI key. No model, no cmake, cross-platform:
+
+```sh
+brew install ffmpeg node          # or apt/dnf/etc
+export XAI_API_KEY=xai-...         # your key, from the environment only
+VU_PROFILE=byok ./video-understanding.sh ~/clip.mov
+```
+
+Transcription runs on xAI (`/v1/stt`); frames use local ffmpeg unless you also set
+`MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` (then frames come from Mux). Get an xAI key at
+[x.ai](https://x.ai). **node** also parses X responses + emits `segments.json`.
 
 **For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl.
 
@@ -124,7 +149,11 @@ on-screen text, demos, and corrections a transcript alone would miss.
 | `WHISPER_MODEL` | `~/.local/opt/whisper.cpp/models/ggml-<VU_MODEL>.bin` | explicit model path |
 | `VU_LANG` | auto | set e.g. `en` to skip detection |
 | `FRAME_QUALITY` | `3` | ffmpeg `-q:v`, 2 best … 31 worst |
-| `VU_PROFILE` | `local` | `local` (xurl + curl) or `grok` (agent supplies `--direct`) |
+| `VU_PROFILE` | `local` | `local`, `byok` (xAI STT + Mux), or `grok` (agent supplies `--direct`) |
+| `STT_BACKEND` | `local` | `local` (whisper.cpp) or `xai` (needs `XAI_API_KEY`) |
+| `FRAME_BACKEND` | `local` | `local` (ffmpeg) or `mux` (needs `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET`; falls back to local) |
+| `XAI_API_KEY` | — | env only, for `STT_BACKEND=xai` |
+| `STT_WORDS_PER_CUE` | `10` | xAI words grouped into ~N-word SRT cues |
 
 ## X videos & profiles
 
@@ -133,5 +162,5 @@ on-screen text, demos, and corrections a transcript alone would miss.
 
 ## Notes
 
-- Frames seek to each exact timestamp (`ffmpeg -ss`), so filenames never drift from the real frame time (unlike an `fps=1/N` filter).
-- Fully local — no cloud, no API key. Whisper tuned with DTW timestamps + VAD; transcript post-processed to drop non-speech markers and repeats.
+- Local frames seek to each exact timestamp (`ffmpeg -ss`), so filenames never drift from the real frame time (unlike an `fps=1/N` filter).
+- **local** mode is fully offline, no keys — whisper tuned with DTW timestamps + VAD; transcript post-processed to drop non-speech markers and repeats. **BYOK** sends audio to xAI (and video to Mux if enabled) — faster to set up, but not offline.

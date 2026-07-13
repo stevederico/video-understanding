@@ -157,6 +157,14 @@ fi
 : "${CACHE_DIR:=$HOME/.cache/video-understanding}"
 : "${TMP_DIR:=/tmp/video-understanding}"
 
+# Pluggable backends. local profile = whisper.cpp + ffmpeg (no keys). byok profile
+# = xAI STT + Mux frames (bring your own keys). Each is independent.
+: "${STT_BACKEND:=local}"          # local (whisper.cpp) | xai
+: "${FRAME_BACKEND:=local}"        # local (ffmpeg)      | mux
+: "${XAI_STT_URL:=https://api.x.ai/v1/stt}"   # xAI: POST -F file=@wav, returns {text,words[]}
+: "${STT_WORDS_PER_CUE:=10}"       # group xAI words into ~N-word SRT cues
+# Keys come from the environment — NEVER hardcoded: XAI_API_KEY, MUX_TOKEN_ID/SECRET.
+
 mkdir -p "$CACHE_DIR" "$X_CACHE_DIR" "$TMP_DIR"
 
 # Handle X URL or ID as input
@@ -244,8 +252,16 @@ need_ffmpeg_hint() {
 }
 command -v ffmpeg  >/dev/null || { echo "error: ffmpeg not found → $(need_ffmpeg_hint)" >&2; exit 1; }
 command -v ffprobe >/dev/null || { echo "error: ffprobe not found → $(need_ffmpeg_hint)" >&2; exit 1; }
-command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh  (or see README)" >&2; exit 1; }
-[ -f "$WHISPER_MODEL" ] || { echo "error: model not found: $WHISPER_MODEL → ~/.local/opt/whisper.cpp/models/download-ggml-model.sh ${VU_MODEL}" >&2; exit 1; }
+# STT deps depend on backend.
+if [ "$STT_BACKEND" = "local" ]; then
+  command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh  (or use the byok profile: VU_PROFILE=byok + XAI_API_KEY)" >&2; exit 1; }
+  [ -f "$WHISPER_MODEL" ] || { echo "error: model not found: $WHISPER_MODEL → ~/.local/opt/whisper.cpp/models/download-ggml-model.sh ${VU_MODEL}" >&2; exit 1; }
+elif [ "$STT_BACKEND" = "xai" ]; then
+  [ -n "${XAI_API_KEY:-}" ] || { echo "error: STT_BACKEND=xai needs XAI_API_KEY in the environment" >&2; exit 1; }
+  command -v node >/dev/null || { echo "error: node not found (needed to build SRT from xAI words) → brew install node" >&2; exit 1; }
+else
+  echo "error: unknown STT_BACKEND '$STT_BACKEND' (use local|xai)" >&2; exit 1
+fi
 [ -f "$VIDEO" ] || { echo "error: no such file: $VIDEO" >&2; exit 1; }
 
 mkdir -p "$OUTDIR/frames"
@@ -262,18 +278,48 @@ echo ">> duration ${DUR}s | source fps ${FPS} | sampling every ${INTERVAL}s"
 echo ">> extracting audio…"
 ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
 
-echo ">> transcribing with whisper.cpp (model=$VU_MODEL)…"
-# DTW word-level alignment for accurate timestamps; preset = model name with
-# '-' → '.' (large-v3-turbo → large.v3.turbo). -ml 60 -sow = readable phrase cues.
-DTW_PRESET="${DTW_PRESET:-${VU_MODEL//-/.}}"
-LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
-WHISPER_ARGS=( -m "$WHISPER_MODEL" -f "$OUTDIR/transcript.wav" \
-  -of "$OUTDIR/transcript" -osrt -otxt -oj \
-  -dtw "$DTW_PRESET" -ml 60 -sow \
-  -nth "${WHISPER_NO_SPEECH_THOLD}" -lpt "${WHISPER_LOGPROB_THOLD}" )
-[ -f "$VAD_MODEL" ] && WHISPER_ARGS+=( --vad-model "$VAD_MODEL" )
-whisper-cli "${WHISPER_ARGS[@]}" ${LANG_ARG[@]+"${LANG_ARG[@]}"}
-rm -f "$OUTDIR/transcript.wav"
+if [ "$STT_BACKEND" = "xai" ]; then
+  echo ">> transcribing with xAI STT ($XAI_STT_URL)…"
+  STT_JSON="$TMP_DIR/stt.$$.json"
+  curl -sS --fail -X POST "$XAI_STT_URL" \
+    -H "Authorization: Bearer $XAI_API_KEY" \
+    -F file=@"$OUTDIR/transcript.wav" > "$STT_JSON" \
+    || { echo "error: xAI STT request failed" >&2; rm -f "$OUTDIR/transcript.wav" "$STT_JSON"; exit 1; }
+  # xAI returns {text, language, duration, words:[{text,start,end}]}. Build the
+  # same outputs whisper.cpp would: transcript.txt/.srt/.json by grouping words
+  # into ~N-word cues.
+  node -e '
+    const fs = require("fs");
+    const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const out = process.argv[2], per = Math.max(1, parseInt(process.argv[3], 10) || 10);
+    const words = Array.isArray(d.words) ? d.words : [];
+    const fmt = t => { const h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=Math.floor(t%60), ms=Math.round((t-Math.floor(t))*1000);
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")},${String(ms).padStart(3,"0")}`; };
+    const cues = [];
+    for (let i=0;i<words.length;i+=per){ const g=words.slice(i,i+per); if(!g.length) continue;
+      cues.push({start:g[0].start,end:g[g.length-1].end,text:g.map(w=>w.text).join(" ").trim()}); }
+    // If no word timestamps, fall back to one cue of the whole text.
+    if(!cues.length && d.text) cues.push({start:0,end:d.duration||0,text:d.text});
+    const srt = cues.map((c,i)=>`${i+1}\n${fmt(c.start)} --> ${fmt(c.end)}\n${c.text}\n`).join("\n");
+    fs.writeFileSync(`${out}.srt`, srt);
+    fs.writeFileSync(`${out}.txt`, (d.text || cues.map(c=>c.text).join(" ")).trim() + "\n");
+    fs.writeFileSync(`${out}.json`, JSON.stringify({text:d.text,language:d.language,duration:d.duration,segments:cues},null,2));
+  ' "$STT_JSON" "$OUTDIR/transcript" "$STT_WORDS_PER_CUE"
+  rm -f "$STT_JSON" "$OUTDIR/transcript.wav"
+else
+  echo ">> transcribing with whisper.cpp (model=$VU_MODEL)…"
+  # DTW word-level alignment for accurate timestamps; preset = model name with
+  # '-' → '.' (large-v3-turbo → large.v3.turbo). -ml 60 -sow = readable phrase cues.
+  DTW_PRESET="${DTW_PRESET:-${VU_MODEL//-/.}}"
+  LANG_ARG=(); [ -n "${VU_LANG:-}" ] && LANG_ARG=(--language "$VU_LANG")
+  WHISPER_ARGS=( -m "$WHISPER_MODEL" -f "$OUTDIR/transcript.wav" \
+    -of "$OUTDIR/transcript" -osrt -otxt -oj \
+    -dtw "$DTW_PRESET" -ml 60 -sow \
+    -nth "${WHISPER_NO_SPEECH_THOLD}" -lpt "${WHISPER_LOGPROB_THOLD}" )
+  [ -f "$VAD_MODEL" ] && WHISPER_ARGS+=( --vad-model "$VAD_MODEL" )
+  whisper-cli "${WHISPER_ARGS[@]}" ${LANG_ARG[@]+"${LANG_ARG[@]}"}
+  rm -f "$OUTDIR/transcript.wav"
+fi
 
 # Post-process transcript (inspired by x-studio): drop non-speech and simple dupes
 if [ -f "$OUTDIR/transcript.txt" ]; then
@@ -295,11 +341,56 @@ if [ -f "$OUTDIR/transcript.json" ] && command -v node >/dev/null; then
   ' "$OUTDIR/transcript.json" > "$OUTDIR/segments.json" 2>/dev/null || true
 fi
 
+# --- frame backend selection ------------------------------------------------
+# local (default): ffmpeg seeks each timestamp locally — instant, free.
+# mux: upload the video to Mux, pull thumbnails at each timestamp from
+# image.mux.com. Only worth it when you have no local ffmpeg; for a local file
+# it's slower (async upload + processing). Degrades to local if creds/setup fail.
+mux_prepare() {  # $1=video → echoes a public playback id, or nothing on failure
+  local auth="$MUX_TOKEN_ID:$MUX_TOKEN_SECRET" up asset pid resp aid
+  up=$(curl -sS --fail -u "$auth" https://api.mux.com/video/v1/uploads \
+        -H "Content-Type: application/json" \
+        -d '{"cors_origin":"*","new_asset_settings":{"playback_policy":["public"]}}' 2>/dev/null) || return 1
+  local url id
+  url=$(printf '%s' "$up" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(d.data?.url||"")') || return 1
+  id=$(printf '%s' "$up" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(d.data?.id||"")') || return 1
+  [ -n "$url" ] || return 1
+  curl -sS --fail -X PUT -H "Content-Type: video/mp4" --data-binary @"$1" "$url" >/dev/null 2>&1 || return 1
+  # poll upload → asset_id, then asset → ready + playback id (cap ~5 min)
+  for _ in $(seq 1 60); do
+    resp=$(curl -sS -u "$auth" "https://api.mux.com/video/v1/uploads/$id" 2>/dev/null)
+    aid=$(printf '%s' "$resp" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(d.data?.asset_id||"")' 2>/dev/null)
+    [ -n "$aid" ] && break
+    sleep 5
+  done
+  [ -n "$aid" ] || return 1
+  for _ in $(seq 1 60); do
+    resp=$(curl -sS -u "$auth" "https://api.mux.com/video/v1/assets/$aid" 2>/dev/null)
+    pid=$(printf '%s' "$resp" | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));const a=d.data||{};process.stdout.write(a.status==="ready"?(a.playback_ids?.[0]?.id||""):"")' 2>/dev/null)
+    [ -n "$pid" ] && break
+    sleep 5
+  done
+  [ -n "$pid" ] && printf '%s' "$pid"
+}
+
+FRAME_MODE="$FRAME_BACKEND"
+MUX_PID=""
+if [ "$FRAME_MODE" = "mux" ]; then
+  if [ -n "${MUX_TOKEN_ID:-}" ] && [ -n "${MUX_TOKEN_SECRET:-}" ]; then
+    echo ">> Mux frames: uploading + processing asset (this can take a while)…"
+    MUX_PID=$(mux_prepare "$VIDEO") || MUX_PID=""
+    [ -z "$MUX_PID" ] && { echo ">> Mux setup failed — falling back to local ffmpeg frames"; FRAME_MODE="local"; }
+  else
+    echo ">> FRAME_BACKEND=mux but MUX_TOKEN_ID/SECRET unset — using local ffmpeg frames"
+    FRAME_MODE="local"
+  fi
+fi
+
 # --- frames at fixed interval, timestamp-named ------------------------------
 # Seek to each exact timestamp so the filename always matches the true frame
 # time (ffmpeg's fps=1/N filter drifts on short/low-fps clips and would lie).
 # Supports fractional seconds (e.g. 0.5 for 500ms). Filename encodes timestamp.
-echo ">> extracting frames every ${INTERVAL}s…"
+echo ">> extracting frames every ${INTERVAL}s (${FRAME_MODE})…"
 
 {
   echo '{'
@@ -326,8 +417,16 @@ while true; do
         printf "%02dm%02ds%03dms", min, sec, ms;
       }
     }')
-  if ffmpeg -y -v error -ss "$t" -i "$VIDEO" -frames:v 1 -q:v "$FRAME_QUALITY" \
-       "$OUTDIR/frames/t${label}.jpg" 2>/dev/null && [ -s "$OUTDIR/frames/t${label}.jpg" ]; then
+  fpath="$OUTDIR/frames/t${label}.jpg"
+  if [ "$FRAME_MODE" = "mux" ]; then
+    # Pull a JPEG at time=$t from the Mux thumbnail service.
+    code=$(curl -sS -o "$fpath" -w '%{http_code}' "https://image.mux.com/${MUX_PID}/thumbnail.jpg?time=${t}&width=1280" 2>/dev/null || echo 000)
+    grabbed=0; { [ "$code" = "200" ] && [ -s "$fpath" ]; } && grabbed=1
+  else
+    ffmpeg -y -v error -ss "$t" -i "$VIDEO" -frames:v 1 -q:v "$FRAME_QUALITY" "$fpath" 2>/dev/null
+    grabbed=0; [ -s "$fpath" ] && grabbed=1
+  fi
+  if [ "$grabbed" = "1" ]; then
     [ $first -eq 1 ] && first=0 || echo ',' >> "$OUTDIR/manifest.json"
     printf '    {"file": "frames/t%s.jpg", "t_sec": %s}' "$label" "$t" >> "$OUTDIR/manifest.json"
     n=$((n+1))

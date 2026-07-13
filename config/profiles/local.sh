@@ -30,9 +30,10 @@ export FRAME_QUALITY
 export DEFAULT_INTERVAL
 
 # ----------------------------------------
-# STAGE: Transcription (STT)
-# whisper.cpp local settings.
+# STAGE: Transcription (STT) + Frames — both local, no keys
 # ----------------------------------------
+: "${STT_BACKEND:=local}"; export STT_BACKEND      # whisper.cpp
+: "${FRAME_BACKEND:=local}"; export FRAME_BACKEND   # ffmpeg
 : "${VU_MODEL:=large-v3-turbo}"
 export VU_MODEL
 : "${WHISPER_MODEL:=$HOME/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin}"

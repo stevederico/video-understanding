@@ -11,7 +11,7 @@ Full pipeline for turning videos into agent-understandable output: timestamped f
 This skill combines video sourcing (including from X), mechanical extraction, and the agent analysis stage. It is generic for any video content.
 
 ## Configuration
-Use `VU_PROFILE=local` (default, fully local whisper + xurl + curl) or `grok` (agent supplies video URL via its X tools).
+Modes: `VU_PROFILE=local` (default — whisper.cpp + ffmpeg, no keys), `byok` (xAI STT via `XAI_API_KEY` + Mux frames, falls back to local ffmpeg if no Mux creds), or `grok` (agent supplies the X video URL via its own tools). local and byok produce identical output files.
 Default frame interval: 500ms (use --interval 500ms / 0.5 / 2 etc).
 Profiles: config/profiles/<name>.sh
 Env vars / --interval override.

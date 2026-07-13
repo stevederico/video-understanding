@@ -1,5 +1,12 @@
 # To-do list
 
+0.16.0
+
+  Add BYOK mode: xAI STT + Mux frames
+  Pluggable STT_BACKEND / FRAME_BACKEND
+  Build SRT from xAI word timestamps
+  Two-mode getting-started in README
+
 0.15.0
 
   List on skills.sh, add install cmd
