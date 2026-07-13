@@ -172,7 +172,7 @@ on-screen text, demos, and corrections a transcript alone would miss.
 ## Sources & profiles
 
 - **Local file / direct URL**: pass a path or any direct video-file URL — no X involved, no xurl.
-- **X post** — **local** profile: [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` resolve the post's video via the X API; the file is cached under `~/.cache/video-understanding`. No xurl? Pass the video URL with `--direct`.
+- **X post** — **local** profile: [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` resolve the post's video via the X API; the file is cached under `~/.cache/video-understanding`.
 - **X post** — **grok** profile: Grok's built-in X tools find the post and supply the URL via `--direct`. Extraction stays local either way.
 
 ## Notes
