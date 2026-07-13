@@ -1,5 +1,12 @@
 # To-do list
 
+0.10.0
+
+  Fix BSD/Linux sed portability
+  Pick highest-bitrate X video
+  Dedupe via TMP_DIR temp
+  Recommend ask-transcribe-cli setup
+
 0.9.0
 
   Update README

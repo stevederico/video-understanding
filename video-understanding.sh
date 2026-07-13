@@ -181,11 +181,16 @@ if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
         POST_JSON=$(xurl read "$POST_ID" 2>/dev/null || echo '{}')
         if [ "$POST_JSON" != "{}" ]; then
           if command -v jq >/dev/null 2>&1; then
+            # Prefer the highest-bitrate mp4 variant (sort desc, take first).
             DIRECT_URL=$(echo "$POST_JSON" | jq -r '
-              ( .media[]?.video_info?.variants[]?.url //
-                .extended_entities?.media[]?.video_info?.variants[]?.url //
-                .. | strings ) | select(contains("video.twimg.com") and endswith(".mp4"))' \
-            | head -1 2>/dev/null || true)
+              [ ( .media[]?.video_info?.variants[]?,
+                  .extended_entities?.media[]?.video_info?.variants[]? )
+                | select(.url and (.url | contains("video.twimg.com") and endswith(".mp4"))) ]
+              | sort_by(.bitrate // 0) | reverse | .[0].url // empty' 2>/dev/null | head -1 || true)
+            if [ -z "$DIRECT_URL" ]; then
+              # Fallback: any twimg mp4 string anywhere in the JSON (structure varies).
+              DIRECT_URL=$(echo "$POST_JSON" | jq -r '.. | strings | select(contains("video.twimg.com") and endswith(".mp4"))' 2>/dev/null | head -1 || true)
+            fi
           else
             echo ">> jq not found; cannot parse xurl JSON. Provide --direct <url>"
             DIRECT_URL=""
@@ -272,11 +277,12 @@ rm -f "$OUTDIR/transcript.wav"
 # Post-process transcript (inspired by x-studio): drop non-speech and simple dupes
 if [ -f "$OUTDIR/transcript.txt" ]; then
   echo ">> cleaning transcript..."
-  # remove [music] etc and sound effects
-  sed -i '' '/^\[.*\]$/d' "$OUTDIR/transcript.txt"
-  sed -i '' '/^\*\(music\|laughter\|applause\)\*$/Id' "$OUTDIR/transcript.txt"
-  # dedupe consecutive identical lines
-  awk 'NF && $0 != last { print; last=$0 }' "$OUTDIR/transcript.txt" > /tmp/clean.txt && mv /tmp/clean.txt "$OUTDIR/transcript.txt"
+  # drop [music]/sound-effect lines, then dedupe consecutive identical lines.
+  # No `sed -i` (BSD vs GNU differ) — pipe to a PID-scoped temp under TMP_DIR.
+  CLEAN_TMP="$TMP_DIR/clean.$$.txt"
+  sed -E -e '/^\[.*\]$/d' -e '/^\*(music|laughter|applause)\*$/Id' "$OUTDIR/transcript.txt" \
+    | awk 'NF && $0 != last { print; last=$0 }' > "$CLEAN_TMP" \
+    && mv "$CLEAN_TMP" "$OUTDIR/transcript.txt"
 fi
 
 # Structured segments (inspired by x-studio: timestamp, speaker, text)
