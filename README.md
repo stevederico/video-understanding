@@ -17,15 +17,12 @@ git clone https://github.com/stevederico/video-understanding.git && cd video-und
 chmod +x video-understanding.sh
 ```
 
-You need **ffmpeg** and the **whisper.cpp CLI** (`whisper-cli`) on your `PATH`, plus a
-GGML model.
+### Recommended: let `ask-transcribe-cli` set it all up (macOS Apple Silicon)
 
-### Easiest: let `ask-transcribe-cli` set it all up (macOS Apple Silicon)
-
-[`ask-transcribe-cli`](https://github.com/stevederico/ask-transcribe-cli) installs
-exactly what this tool needs in one command — it builds whisper.cpp (Metal),
-symlinks `whisper-cli` into `~/.local/bin`, downloads `ggml-large-v3-turbo` to the
-default path, and pulls in `ffmpeg`:
+One command installs everything this tool needs — no need to wire up ffmpeg,
+whisper.cpp, or models yourself. [`ask-transcribe-cli`](https://github.com/stevederico/ask-transcribe-cli)
+builds whisper.cpp (Metal), symlinks `whisper-cli` into `~/.local/bin`, downloads
+`ggml-large-v3-turbo` to the default path, and pulls in `ffmpeg`:
 
 ```sh
 git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh
@@ -33,7 +30,12 @@ git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transc
 
 (`bash setup.sh` also adds the `ask` local-LLM CLI; `install-stt.sh` is STT-only.)
 Ensure `~/.local/bin` is on your `PATH` and you're done — skip the manual steps
-below. Prefer the manual route? Continue here:
+below.
+
+## Manual setup
+
+Prefer to wire it up by hand? You need **ffmpeg**, the **whisper.cpp CLI**
+(`whisper-cli`) on your `PATH`, and a GGML model.
 
 ### 1. ffmpeg
 

@@ -1,5 +1,11 @@
 # To-do list
 
+0.11.0
+
+  Recommend ask-transcribe-cli first
+  Skill auto-installs deps
+  Drop manual reqs from top
+
 0.10.0
 
   Fix BSD/Linux sed portability

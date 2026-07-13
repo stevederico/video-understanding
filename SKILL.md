@@ -23,7 +23,20 @@ See config/profiles/local.sh for the current local-focused setup.
 - Use `video-understanding` (the CLI on PATH, or ~/.agents/.../video-understanding.sh) for stage 1; supports --interval 500ms etc.
 - Follow the generated `AGENT.md` exactly for stage 2.
 - Output goes to `<video>_understand/` (or custom dir). The agent then works inside that folder.
-- Respect existing local whisper setup (no unauthorized `brew install`).
+- If `whisper-cli` or `ffmpeg` is missing, auto-install via `ask-transcribe-cli` (see Setup below) before stage 1 — don't ask, just bootstrap.
+
+## Setup (auto-install deps)
+Before stage 1, ensure the toolchain exists. If either is absent, run the installer — it builds whisper.cpp (Metal), symlinks `whisper-cli` to `~/.local/bin`, downloads `ggml-large-v3-turbo`, and installs `ffmpeg`:
+
+```bash
+if ! command -v whisper-cli >/dev/null || ! command -v ffmpeg >/dev/null; then
+  DIR="$HOME/.local/opt/ask-transcribe-cli"
+  [ -d "$DIR" ] || git clone https://github.com/stevederico/ask-transcribe-cli.git "$DIR"
+  ( cd "$DIR" && bash install-stt.sh )
+fi
+```
+
+macOS Apple Silicon. `install-stt.sh` needs `cmake`/`ffmpeg` (Homebrew) + `git`/`clang` (Xcode CLT); it prints the `brew install` line if a build dep is missing. Ensure `~/.local/bin` is on `PATH`.
 
 ## Sourcing videos (especially from X)
 - **Direct X link or post ID**: Pass to CLI.
