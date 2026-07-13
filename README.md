@@ -10,14 +10,17 @@ Two stages:
 
 ## Two modes
 
-Stage 1 runs in one of two modes — pick per `VU_PROFILE`:
+**Install the tools, or bring your own keys.** Pick per `VU_PROFILE`:
 
-| mode | transcription | frames | needs | best for |
+| mode | transcription | frames | you provide | best for |
 |---|---|---|---|---|
-| **local** (default) | whisper.cpp | ffmpeg | one-time whisper.cpp build (macOS Apple Silicon turnkey) | private, offline, no keys |
-| **BYOK** | xAI STT | Mux → local ffmpeg fallback | `XAI_API_KEY` (+ optional Mux creds) | any OS, no whisper build |
+| **local** (default) | whisper.cpp | ffmpeg | the tools (one-time install; macOS Apple Silicon turnkey) | private, offline, no keys |
+| **BYOK** | xAI STT | Mux | `XAI_API_KEY` + Mux creds — **installs nothing** | any OS, no build |
 
-BYOK drops the heavy whisper.cpp model + build — just needs `ffmpeg` + `node` + your key. Both modes produce identical output files.
+- **local** = install whisper.cpp + ffmpeg once; runs offline, no keys, no per-use cost.
+- **BYOK** = no whisper build, no ffmpeg — the video goes straight to xAI (transcript) and Mux (frames), both server-side. Only `curl` + `node` locally (already on any dev box).
+- Set only `XAI_API_KEY` (no Mux)? BYOK still transcribes with zero install, but frames then need local `ffmpeg`.
+- Both modes produce identical output files.
 
 ## Install
 
@@ -48,19 +51,22 @@ git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transc
 
 Ensure `~/.local/bin` is on your `PATH`.
 
-### Get started — BYOK mode (any OS, no whisper build)
+### Get started — BYOK mode (any OS, installs nothing)
 
-Only needs `ffmpeg` + `node` + an xAI key. No model, no cmake, cross-platform:
+Bring keys instead of tools. The video is sent to xAI for the transcript and to
+Mux for frames — no whisper build, no ffmpeg, no model. Only `curl` + `node`
+(already present) are used locally:
 
 ```sh
-brew install ffmpeg node          # or apt/dnf/etc
-export XAI_API_KEY=xai-...         # your key, from the environment only
+export XAI_API_KEY=xai-...               # transcript  (x.ai)
+export MUX_TOKEN_ID=...                   # frames      (dashboard.mux.com)
+export MUX_TOKEN_SECRET=...
 VU_PROFILE=byok ./video-understanding.sh ~/clip.mov
 ```
 
-Transcription runs on xAI (`/v1/stt`); frames use local ffmpeg unless you also set
-`MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` (then frames come from Mux). Get an xAI key at
-[x.ai](https://x.ai). **node** also parses X responses + emits `segments.json`.
+Keys are read from the environment only — never hardcode them. Skip the Mux keys
+and BYOK still transcribes with zero install, but frames fall back to local
+`ffmpeg` (so you'd need that one tool).
 
 **For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl.
 
@@ -163,4 +169,4 @@ on-screen text, demos, and corrections a transcript alone would miss.
 ## Notes
 
 - Local frames seek to each exact timestamp (`ffmpeg -ss`), so filenames never drift from the real frame time (unlike an `fps=1/N` filter).
-- **local** mode is fully offline, no keys — whisper tuned with DTW timestamps + VAD; transcript post-processed to drop non-speech markers and repeats. **BYOK** sends audio to xAI (and video to Mux if enabled) — faster to set up, but not offline.
+- **local** mode is fully offline, no keys — whisper tuned with DTW timestamps + VAD; transcript post-processed to drop non-speech markers and repeats. **BYOK** uploads the video to xAI (transcript) and Mux (frames) — zero install, but not offline (your media leaves the machine).

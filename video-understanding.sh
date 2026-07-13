@@ -250,8 +250,20 @@ need_ffmpeg_hint() {
     *)      echo "install ffmpeg from https://ffmpeg.org/download.html" ;;
   esac
 }
-command -v ffmpeg  >/dev/null || { echo "error: ffmpeg not found → $(need_ffmpeg_hint)" >&2; exit 1; }
-command -v ffprobe >/dev/null || { echo "error: ffprobe not found → $(need_ffmpeg_hint)" >&2; exit 1; }
+# ffmpeg is only needed for LOCAL stt (audio extract) or LOCAL frames. byok+Mux
+# runs fully server-side → no ffmpeg. Work out the effective frame mode first
+# (Mux needs creds, else it degrades to local ffmpeg).
+FRAME_EFFECTIVE="$FRAME_BACKEND"
+if [ "$FRAME_EFFECTIVE" = "mux" ] && { [ -z "${MUX_TOKEN_ID:-}" ] || [ -z "${MUX_TOKEN_SECRET:-}" ]; }; then
+  FRAME_EFFECTIVE="local"
+fi
+NEED_FFMPEG=0
+[ "$STT_BACKEND" = "local" ] && NEED_FFMPEG=1
+[ "$FRAME_EFFECTIVE" = "local" ] && NEED_FFMPEG=1
+if [ "$NEED_FFMPEG" = "1" ]; then
+  command -v ffmpeg  >/dev/null || { echo "error: ffmpeg not found → $(need_ffmpeg_hint)  (or go install-free: VU_PROFILE=byok with XAI_API_KEY + MUX_TOKEN_ID/SECRET)" >&2; exit 1; }
+  command -v ffprobe >/dev/null || { echo "error: ffprobe not found → $(need_ffmpeg_hint)" >&2; exit 1; }
+fi
 # STT deps depend on backend.
 if [ "$STT_BACKEND" = "local" ]; then
   command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh  (or use the byok profile: VU_PROFILE=byok + XAI_API_KEY)" >&2; exit 1; }
@@ -266,29 +278,20 @@ fi
 
 mkdir -p "$OUTDIR/frames"
 
-# --- probe -----------------------------------------------------------------
-DUR=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$VIDEO")
-FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nk=1:nw=1 "$VIDEO" | head -1)
 echo ">> $VIDEO"
-echo ">> duration ${DUR}s | source fps ${FPS} | sampling every ${INTERVAL}s"
 
-# --- audio + transcription --------------------------------------------------
-# Audio is named transcript.wav so engines that name outputs after the input
-# basename produce transcript.srt / .txt / .json directly.
-echo ">> extracting audio…"
-ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
-
+# --- transcription (byok also yields the duration used for frame sampling) --
+DUR=""; FPS="unknown"
 if [ "$STT_BACKEND" = "xai" ]; then
-  echo ">> transcribing with xAI STT ($XAI_STT_URL)…"
+  echo ">> transcribing with xAI STT (video sent directly — no ffmpeg)…"
   STT_JSON="$TMP_DIR/stt.$$.json"
   curl -sS --fail -X POST "$XAI_STT_URL" \
     -H "Authorization: Bearer $XAI_API_KEY" \
-    -F file=@"$OUTDIR/transcript.wav" > "$STT_JSON" \
-    || { echo "error: xAI STT request failed" >&2; rm -f "$OUTDIR/transcript.wav" "$STT_JSON"; exit 1; }
+    -F file=@"$VIDEO" > "$STT_JSON" \
+    || { echo "error: xAI STT request failed" >&2; rm -f "$STT_JSON"; exit 1; }
   # xAI returns {text, language, duration, words:[{text,start,end}]}. Build the
-  # same outputs whisper.cpp would: transcript.txt/.srt/.json by grouping words
-  # into ~N-word cues.
-  node -e '
+  # same outputs whisper.cpp would (transcript.srt/.txt/.json) and echo duration.
+  DUR=$(node -e '
     const fs = require("fs");
     const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     const out = process.argv[2], per = Math.max(1, parseInt(process.argv[3], 10) || 10);
@@ -304,9 +307,14 @@ if [ "$STT_BACKEND" = "xai" ]; then
     fs.writeFileSync(`${out}.srt`, srt);
     fs.writeFileSync(`${out}.txt`, (d.text || cues.map(c=>c.text).join(" ")).trim() + "\n");
     fs.writeFileSync(`${out}.json`, JSON.stringify({text:d.text,language:d.language,duration:d.duration,segments:cues},null,2));
-  ' "$STT_JSON" "$OUTDIR/transcript" "$STT_WORDS_PER_CUE"
-  rm -f "$STT_JSON" "$OUTDIR/transcript.wav"
+    process.stdout.write(String(d.duration||""));
+  ' "$STT_JSON" "$OUTDIR/transcript" "$STT_WORDS_PER_CUE")
+  rm -f "$STT_JSON"
 else
+  echo ">> extracting audio…"
+  ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
+  DUR=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$VIDEO")
+  FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nk=1:nw=1 "$VIDEO" | head -1)
   echo ">> transcribing with whisper.cpp (model=$VU_MODEL)…"
   # DTW word-level alignment for accurate timestamps; preset = model name with
   # '-' → '.' (large-v3-turbo → large.v3.turbo). -ml 60 -sow = readable phrase cues.
@@ -320,6 +328,8 @@ else
   whisper-cli "${WHISPER_ARGS[@]}" ${LANG_ARG[@]+"${LANG_ARG[@]}"}
   rm -f "$OUTDIR/transcript.wav"
 fi
+: "${DUR:=0}"
+echo ">> duration ${DUR}s | fps ${FPS} | sampling every ${INTERVAL}s"
 
 # Post-process transcript (inspired by x-studio): drop non-speech and simple dupes
 if [ -f "$OUTDIR/transcript.txt" ]; then
@@ -373,16 +383,20 @@ mux_prepare() {  # $1=video → echoes a public playback id, or nothing on failu
   [ -n "$pid" ] && printf '%s' "$pid"
 }
 
-FRAME_MODE="$FRAME_BACKEND"
+# FRAME_EFFECTIVE was resolved in preflight (mux→local if creds absent). If it's
+# still mux, prepare the asset; on failure, fall back to local ffmpeg (which
+# preflight only guaranteed present when NEED_FFMPEG=1).
+FRAME_MODE="$FRAME_EFFECTIVE"
 MUX_PID=""
 if [ "$FRAME_MODE" = "mux" ]; then
-  if [ -n "${MUX_TOKEN_ID:-}" ] && [ -n "${MUX_TOKEN_SECRET:-}" ]; then
-    echo ">> Mux frames: uploading + processing asset (this can take a while)…"
-    MUX_PID=$(mux_prepare "$VIDEO") || MUX_PID=""
-    [ -z "$MUX_PID" ] && { echo ">> Mux setup failed — falling back to local ffmpeg frames"; FRAME_MODE="local"; }
-  else
-    echo ">> FRAME_BACKEND=mux but MUX_TOKEN_ID/SECRET unset — using local ffmpeg frames"
-    FRAME_MODE="local"
+  echo ">> Mux frames: uploading + processing asset (this can take a while)…"
+  MUX_PID=$(mux_prepare "$VIDEO") || MUX_PID=""
+  if [ -z "$MUX_PID" ]; then
+    if command -v ffmpeg >/dev/null; then
+      echo ">> Mux setup failed — falling back to local ffmpeg frames"; FRAME_MODE="local"
+    else
+      echo "error: Mux frame setup failed and no local ffmpeg to fall back to → check MUX creds, or install ffmpeg" >&2; exit 1
+    fi
   fi
 fi
 

@@ -1,5 +1,12 @@
 # To-do list
 
+0.17.0
+
+  BYOK now installs nothing
+  Send video straight to xAI STT (no ffmpeg)
+  Duration from xAI response, ffprobe local-only
+  ffmpeg required only for local backends
+
 0.16.0
 
   Add BYOK mode: xAI STT + Mux frames
