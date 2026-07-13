@@ -47,6 +47,22 @@ if [[ -f "$CONFIG_FILE" ]]; then
   source "$CONFIG_FILE"
 fi
 
+# Optional .env for BYOK keys (gitignored). Checks ./.env then <script-dir>/.env.
+# Plain KEY=value lines; already-set environment variables always win (so a
+# per-run `XAI_API_KEY=… ./video-understanding.sh` overrides the file).
+load_env_file() {
+  [ -f "$1" ] || return 0
+  local k v
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    case "$k" in ''|'#'*|*[!A-Za-z0-9_]*) continue ;; esac  # skip blank/comment/invalid
+    [ -n "${!k:-}" ] && continue                             # environment wins
+    v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"       # strip one layer of quotes
+    export "$k=$v"
+  done < "$1"
+}
+load_env_file "./.env"
+load_env_file "$SCRIPT_DIR/.env"
+
 # Apply profile defaults early (before arg parsing) so DEFAULT_INTERVAL / DEFAULT_OUTDIR_SUFFIX
 # from config/profiles/*.sh control behavior (env overrides still win).
 : "${DEFAULT_INTERVAL:=0.5}"

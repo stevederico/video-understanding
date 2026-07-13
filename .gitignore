@@ -2,3 +2,5 @@
 *_understand/
 # transient
 .DS_Store
+# BYOK keys — never commit
+.env

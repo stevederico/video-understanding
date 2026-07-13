@@ -64,9 +64,12 @@ export MUX_TOKEN_SECRET=...
 VU_PROFILE=byok ./video-understanding.sh ~/clip.mov
 ```
 
-Keys are read from the environment only — never hardcode them. Skip the Mux keys
-and BYOK still transcribes with zero install, but frames fall back to local
-`ffmpeg` (so you'd need that one tool).
+Keys are read from the environment only — never hardcode them. Prefer a file?
+Copy `.env.example` to `.env` (gitignored) and fill it in — the script loads
+`./.env` then `<script-dir>/.env` automatically; anything you `export` still wins.
+
+Skip the Mux keys and BYOK still transcribes with zero install, but frames fall
+back to local `ffmpeg` (so you'd need that one tool).
 
 **For X posts by URL** you also need [`xurl`](https://github.com/xdevplatform/xurl) (xAI's X API CLI) authed with your X API keys — or just skip it and pass the video with `--direct <mp4-url>`. Local files never need xurl.
 

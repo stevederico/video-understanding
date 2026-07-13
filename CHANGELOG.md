@@ -1,5 +1,12 @@
 # To-do list
 
+0.18.0
+
+  Optional .env for BYOK keys
+  Env vars still take precedence
+  Add .env.example, gitignore .env
+  Remove todo.md
+
 0.17.0
 
   BYOK now installs nothing
