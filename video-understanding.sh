@@ -395,7 +395,9 @@ fi
 # mux: upload the video to Mux, pull thumbnails at each timestamp from
 # image.mux.com. Only worth it when you have no local ffmpeg; for a local file
 # it's slower (async upload + processing). Degrades to local if creds/setup fail.
-mux_prepare() {  # $1=video → echoes a public playback id, or nothing on failure
+# The asset is deleted on exit (mux_cleanup) — Mux public playback means anyone
+# with the id can fetch the video, so it must not outlive the run.
+mux_prepare() {  # $1=video → echoes "<playback-id> <asset-id>", or nothing on failure
   local auth="$MUX_TOKEN_ID:$MUX_TOKEN_SECRET" up asset pid resp aid
   up=$(curl -sS --fail -u "$auth" https://api.mux.com/video/v1/uploads \
         -H "Content-Type: application/json" \
@@ -419,8 +421,25 @@ mux_prepare() {  # $1=video → echoes a public playback id, or nothing on failu
     [ -n "$pid" ] && break
     sleep 5
   done
-  [ -n "$pid" ] && printf '%s' "$pid"
+  # Always report the asset id, even if the readiness poll timed out — an asset
+  # that exists must be deletable, or a public copy is stranded on Mux forever.
+  printf '%s:%s' "$pid" "$aid"
+  [ -n "$pid" ]   # exit status = did we get a usable playback id
 }
+
+# Mux assets are created with public playback (image.mux.com needs it — signed
+# playback would require a signing key + a JWT per thumbnail). So the asset is
+# deleted as soon as frames are pulled, and on any exit path in between.
+MUX_ASSET_ID=""
+mux_cleanup() {
+  [ -n "$MUX_ASSET_ID" ] || return 0
+  local aid="$MUX_ASSET_ID"; MUX_ASSET_ID=""   # clear first: never delete twice
+  echo ">> deleting Mux asset $aid…"
+  curl -sS --fail -X DELETE -u "$MUX_TOKEN_ID:$MUX_TOKEN_SECRET" \
+    "https://api.mux.com/video/v1/assets/$aid" >/dev/null 2>&1 \
+    || echo "warning: could not delete Mux asset $aid — it is PUBLIC; remove it at dashboard.mux.com" >&2
+}
+trap mux_cleanup EXIT
 
 # FRAME_EFFECTIVE was resolved in preflight (mux→local if creds absent). If it's
 # still mux, prepare the asset; on failure, fall back to local ffmpeg (which
@@ -429,7 +448,13 @@ FRAME_MODE="$FRAME_EFFECTIVE"
 MUX_PID=""
 if [ "$FRAME_MODE" = "mux" ]; then
   echo ">> Mux frames: uploading + processing asset (this can take a while)…"
-  MUX_PID=$(mux_prepare "$VIDEO") || MUX_PID=""
+  # mux_prepare runs in a subshell, so it reports "<playback-id>:<asset-id>" on
+  # stdout rather than setting MUX_ASSET_ID directly. Record the asset id even
+  # when the playback id is empty, so cleanup can still delete a stranded asset.
+  MUX_OUT=$(mux_prepare "$VIDEO" || true)
+  MUX_PID="${MUX_OUT%%:*}"
+  MUX_ASSET_ID="${MUX_OUT#*:}"
+  [ "$MUX_OUT" = "$MUX_ASSET_ID" ] && MUX_ASSET_ID=""   # no ':' → nothing to clean
   if [ -z "$MUX_PID" ]; then
     if command -v ffmpeg >/dev/null; then
       echo ">> Mux setup failed — falling back to local ffmpeg frames"; FRAME_MODE="local"
@@ -445,10 +470,18 @@ fi
 # Supports fractional seconds (e.g. 0.5 for 500ms). Filename encodes timestamp.
 echo ">> extracting frames every ${INTERVAL}s (${FRAME_MODE})…"
 
+# duration_sec is a JSON number, so DUR must be numeric. The xAI path takes it
+# from the API response, which may be absent or non-numeric — fall back to 0
+# rather than emitting a manifest that won't parse.
+case "$DUR" in
+  ''|*[!0-9.]*|*.*.*) DUR_JSON=0 ;;
+  *) DUR_JSON="$DUR" ;;
+esac
+
 {
   echo '{'
   echo "  \"video\": \"$VIDEO\","
-  echo "  \"duration_sec\": ${DUR:-0},"
+  echo "  \"duration_sec\": ${DUR_JSON},"
   echo "  \"source_fps\": \"$FPS\","
   echo "  \"interval_sec\": $INTERVAL,"
   echo '  "frames": ['
@@ -471,14 +504,19 @@ while true; do
       }
     }')
   fpath="$OUTDIR/frames/t${label}.jpg"
+  # A missing frame is normal (the last sample can land exactly at the end of the
+  # video), so every step here must stay zero-status under `set -e` — an
+  # unguarded failure would kill the run before manifest.json is closed.
+  grabbed=0
   if [ "$FRAME_MODE" = "mux" ]; then
     # Pull a JPEG at time=$t from the Mux thumbnail service.
     code=$(curl -sS -o "$fpath" -w '%{http_code}' "https://image.mux.com/${MUX_PID}/thumbnail.jpg?time=${t}&width=1280" 2>/dev/null || echo 000)
-    grabbed=0; { [ "$code" = "200" ] && [ -s "$fpath" ]; } && grabbed=1
+    if [ "$code" = "200" ] && [ -s "$fpath" ]; then grabbed=1; fi
   else
-    ffmpeg -y -v error -ss "$t" -i "$VIDEO" -frames:v 1 -q:v "$FRAME_QUALITY" "$fpath" 2>/dev/null
-    grabbed=0; [ -s "$fpath" ] && grabbed=1
+    ffmpeg -y -v error -ss "$t" -i "$VIDEO" -frames:v 1 -q:v "$FRAME_QUALITY" "$fpath" 2>/dev/null || true
+    if [ -s "$fpath" ]; then grabbed=1; fi
   fi
+  [ "$grabbed" = "1" ] || rm -f "$fpath"   # don't leave a 0-byte frame behind
   if [ "$grabbed" = "1" ]; then
     [ $first -eq 1 ] && first=0 || echo ',' >> "$OUTDIR/manifest.json"
     printf '    {"file": "frames/t%s.jpg", "t_sec": %s}' "$label" "$t" >> "$OUTDIR/manifest.json"
@@ -492,6 +530,10 @@ while true; do
 done
 printf '\n  ]\n}\n' >> "$OUTDIR/manifest.json"
 echo ">> $n frames written to $OUTDIR/frames/"
+
+# Frames are local now — drop the public Mux copy immediately (the EXIT trap is
+# only a backstop for the paths that never get here).
+mux_cleanup
 
 # --- agent handoff ----------------------------------------------------------
 cat > "$OUTDIR/AGENT.md" <<'EOF'

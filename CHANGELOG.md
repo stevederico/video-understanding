@@ -1,5 +1,12 @@
 # To-do list
 
+0.20.0
+
+  Fix crash when a frame sample lands past the video end
+  Delete the Mux asset once frames are pulled
+  Recover the asset id when the Mux poll times out
+  Guard duration_sec so manifest.json always parses
+
 0.19.0
 
   Accept any direct video-file URL
