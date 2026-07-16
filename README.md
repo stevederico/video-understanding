@@ -154,8 +154,8 @@ on-screen text, demos, and corrections a transcript alone would miss.
 | flag / var | default | note |
 |---|---|---|
 | `--interval` | `500ms` | accepts `500ms`, `0.5`, `2s`; or 2nd positional / `DEFAULT_INTERVAL`. Small for fast cuts, larger (`3s`) for talking-head. |
-| `--name` | from file / post ID | output slug |
-| `--force` | off | ignore cached X video |
+| `--name` | from the file name | output slug |
+| `--force` | off | re-download a cached URL |
 | `VU_MODEL` | `large-v3-turbo` | needs matching `ggml-<model>.bin` (`tiny`…`large-v3`) |
 | `WHISPER_MODEL` | `~/.local/opt/whisper.cpp/models/ggml-<VU_MODEL>.bin` | explicit model path |
 | `VU_LANG` | auto | set e.g. `en` to skip detection |
