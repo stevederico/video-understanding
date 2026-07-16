@@ -1,5 +1,12 @@
 # To-do list
 
+0.21.0
+
+  Remove X post sourcing: no xurl resolve, no CDN download, no cache
+  Refuse post links and post IDs with a message pointing at file input
+  Drop X_VIDEO_RESOLVER / X_DOWNLOAD_METHOD / X_CACHE_DIR from all profiles
+  Docs cover sourcing as the caller's responsibility
+
 0.20.0
 
   Fix crash when a frame sample lands past the video end

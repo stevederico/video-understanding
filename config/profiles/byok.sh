@@ -30,13 +30,6 @@
 : "${DEFAULT_INTERVAL:=0.5}"; export DEFAULT_INTERVAL
 
 # ----------------------------------------
-# STAGE: X sourcing (unchanged from local)
-# ----------------------------------------
-: "${X_VIDEO_RESOLVER:=xurl}"; export X_VIDEO_RESOLVER
-: "${X_DOWNLOAD_METHOD:=curl}"; export X_DOWNLOAD_METHOD
-: "${X_CACHE_DIR:=$HOME/.cache/video-understanding/x-videos}"; export X_CACHE_DIR
-
-# ----------------------------------------
 # STAGE: Cache / temp
 # ----------------------------------------
 : "${CACHE_DIR:=$HOME/.cache/video-understanding}"; export CACHE_DIR

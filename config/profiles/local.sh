@@ -1,24 +1,12 @@
 #!/bin/bash
 # ============================================
 # LOCAL FOCUSED PROFILE
-# All stages use local tools only (xurl for X resolution + curl + local whisper).
-# No cloud APIs, no external services. X resolution is handled by local xurl CLI (or --direct).
+# All stages use local tools only (ffmpeg + local whisper).
+# No cloud APIs, no external services.
 # ============================================
 
 : "${VU_PROFILE:=local}"
 export VU_PROFILE
-
-# ----------------------------------------
-# STAGE: X Sourcing / Download
-# How to find and download videos from X.
-# Default: use local xurl CLI to resolve video URL from post.
-# ----------------------------------------
-: "${X_VIDEO_RESOLVER:=xurl}"   # xurl (local CLI) or direct (manual)
-export X_VIDEO_RESOLVER
-: "${X_DOWNLOAD_METHOD:=curl}"  # curl the resolved video-file URL
-export X_DOWNLOAD_METHOD
-: "${X_CACHE_DIR:=$HOME/.cache/video-understanding/x-videos}"
-export X_CACHE_DIR
 
 # ----------------------------------------
 # STAGE: Vision / Frame Extraction

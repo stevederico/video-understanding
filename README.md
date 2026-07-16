@@ -1,6 +1,6 @@
 # video-understanding
 
-Your agent's movie critic. Turns any video (local file or X post) into something an
+Your agent's movie critic. Turns a video into something an
 AI agent can fully understand: timestamped frames + an SRT transcript, which the
 agent then reviews to write a complete `understanding.md`.
 
@@ -72,16 +72,15 @@ Copy `.env.example` to `.env` (gitignored) and fill it in — the script loads
 Skip the Mux keys and BYOK still transcribes with zero install, but frames fall
 back to local `ffmpeg` (so you'd need that one tool).
 
-**Inputs:** a local file, a direct video-file URL (hosted anywhere), or an X post.
-X posts are resolved through the X API via [`xurl`](https://github.com/xdevplatform/xurl)
-(authed with your X API keys) — or skip that and just pass a direct video URL /
-local path. `xurl` is only needed to resolve an `x.com/…` link.
+**Inputs:** a local file, or a direct URL to a video file. Post links
+(`x.com/…/status/…`) are refused — this tool analyses a video you already have,
+it doesn't pull video out of posts. See [Sourcing videos](#sourcing-videos).
 
 <details>
 <summary>Manual dependency setup (Linux/Windows, or by hand)</summary>
 
 1. **ffmpeg** — `brew install ffmpeg` · `sudo apt install ffmpeg` · [ffmpeg.org](https://ffmpeg.org/download.html)
-2. **node** — [nodejs.org](https://nodejs.org) · `brew install node` · `sudo apt install nodejs` (parses X-URL JSON + emits `segments.json`; usually already installed)
+2. **node** — [nodejs.org](https://nodejs.org) · `brew install node` · `sudo apt install nodejs` (emits `segments.json`; usually already installed)
 3. **whisper.cpp** — build from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) and put `whisper-cli` on PATH (Metal-accelerated automatically on Apple Silicon):
    ```sh
    git clone https://github.com/ggml-org/whisper.cpp.git ~/.local/opt/whisper.cpp
@@ -91,13 +90,12 @@ local path. `xurl` is only needed to resolve an `x.com/…` link.
    ```
    Don't move `build/` afterward — the symlink's dylib rpaths are absolute; rebuild in place if you do.
 4. **Model** — `bash ~/.local/opt/whisper.cpp/models/download-ggml-model.sh large-v3-turbo` (~1.5G). Lands at the default path the script expects.
-5. **xurl** (optional, X-by-URL only) — [`github.com/xdevplatform/xurl`](https://github.com/xdevplatform/xurl), then `xurl auth`. Skip it if you always pass `--direct`.
 </details>
 
 ## Use
 
 ```sh
-./video-understanding.sh <video-or-x-url> [options]
+./video-understanding.sh <video-or-url> [options]
 ```
 
 | command | does |
@@ -105,8 +103,7 @@ local path. `xurl` is only needed to resolve an `x.com/…` link.
 | `./video-understanding.sh clip.mov` | local file, a frame every 500ms (default) |
 | `./video-understanding.sh clip.mov --interval 2s` | a frame every 2s |
 | `./video-understanding.sh https://example.com/talk.mp4 --name talk` | a direct video-file URL (hosted anywhere) |
-| `./video-understanding.sh https://x.com/u/status/123 --name post` | an X post — resolved via the X API (`xurl`) |
-| `… --direct https://example.com/talk.mp4` | pass the video URL explicitly (skips resolving) |
+| `… --direct https://example.com/talk.mp4` | pass the video URL explicitly |
 | `… --force` | re-download even if the video is cached |
 
 Then tell your agent: *"read `clip_understand/AGENT.md` and do it."*
@@ -170,11 +167,27 @@ on-screen text, demos, and corrections a transcript alone would miss.
 | `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` | — | env/`.env` only, for `FRAME_BACKEND=mux` |
 | `STT_WORDS_PER_CUE` | `10` | xAI words grouped into ~N-word SRT cues |
 
-## Sources & profiles
+## Sourcing videos
 
-- **Local file / direct URL**: pass a path or any direct video-file URL — no X involved, no xurl.
-- **X post** — **local** profile: [`xurl`](https://github.com/xdevplatform/xurl) (authed) + `node` resolve the post's video via the X API; the file is cached under `~/.cache/video-understanding`.
-- **X post** — **grok** profile: Grok's built-in X tools find the post and supply the URL via `--direct`. Extraction stays local either way.
+This tool does not download videos out of social posts. Pass a video file, or a
+direct URL to one. Post links (`x.com/…/status/…`) and bare post IDs are refused.
+
+Getting a hosted video's file is generally restricted by the platform's terms of
+service — X's don't permit it. So sourcing the file is your call: your own
+upload, an export the platform offers you, or the rights holder's permission.
+
+```sh
+./video-understanding.sh ~/clip.mov                                # a file
+./video-understanding.sh https://example.com/talk.mp4 --name talk  # a file, by URL
+```
+
+Downloaded URLs are cached under `~/.cache/video-understanding/downloads`.
+
+## Profiles
+
+- **local** (default): whisper.cpp + ffmpeg. Fully offline, no keys.
+- **byok**: xAI STT + Mux frames. Installs nothing; your media leaves the machine.
+- **grok**: the agent supplies a direct video URL via `--direct`. Extraction stays local.
 
 ## Notes
 

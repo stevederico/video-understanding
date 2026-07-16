@@ -3,15 +3,14 @@
 # transcript, then hand off to an AI agent to review frames against the
 # transcript and write a full understanding of the video.
 #
-# Supports local video files or X (Twitter) posts.
-# For X: defaults to xurl read to resolve video URL, then curl download; --direct for manual CDN URL.
-# Extracts frames + transcript like local.
+# Takes a local video file, or a direct URL to one. Post links (x.com/…/status/…)
+# are refused — this tool does not pull video out of social posts.
 #
 # Stage 1 (this script): mechanical extraction. Fast, deterministic, no AI.
 # Stage 2 (the agent):    reads frames + SRT, writes understanding.md.
 #
 # Usage:
-#   video-understanding.sh <video-or-x-url> [interval] [output_dir] [--interval <val>] [--direct <mp4-url>] [--name <slug>]
+#   video-understanding.sh <video-or-url> [interval] [output_dir] [--interval <val>] [--direct <url>] [--name <slug>]
 #   --interval accepts 0.5, 500ms, 2s etc. Default: 500ms.
 #
 # Config: VU_PROFILE=local (default) or grok. Profiles in config/profiles/
@@ -19,14 +18,13 @@
 #
 # Examples:
 #   ./video-understanding.sh ~/Movies/demo.mov
-#   ./video-understanding.sh https://x.com/user/status/1234567890 --interval 500ms
-#   ./video-understanding.sh https://x.com/user/status/1234567890 --direct https://video.twimg.com/...mp4 --interval 1
+#   ./video-understanding.sh https://example.com/talk.mp4 --interval 500ms
 #
 # STT is local whisper.cpp: whisper-cli must be on PATH and a matching ggml
 # model present (see README for the one-time build + model download).
 #
 # Config: VU_PROFILE=local (default) or grok. See config/profiles/
-# Env vars override profile. Local = fully local (whisper + xurl + curl).
+# Env vars override profile. Local = fully local (whisper + ffmpeg).
 #
 # Output tree (in <output_dir>):
 #   frames/t00m00s.jpg or t00m00s500ms.jpg ...   one JPEG every <interval> (default 500ms), timestamp-named
@@ -96,18 +94,22 @@ while [[ $# -gt 0 ]]; do
 video-understanding - Official CLI for video analysis with AI
 
 Usage:
-  video-understanding <video-or-x-url> [interval] [outdir] [options]
+  video-understanding <video-or-url> [interval] [outdir] [options]
+
+Takes a video file, or a direct URL to one. Post links (x.com/…/status/…) are
+refused — this tool does not pull video out of social posts. Save the video by
+means you're licensed to use, then pass it.
 
 Options:
   --interval <val>    Frame interval (default 0.5s / 500ms). Accepts 0.5, 500ms, 2s, etc.
-  --direct <mp4-url>  Direct CDN URL to use (bypass xurl resolve; for manual CDN)
-  --name <slug>       Slug for output (default from file or post ID)
+  --direct <url>      Direct URL to a video file (overrides the positional arg)
+  --name <slug>       Slug for output (default from the file name)
   --force, --no-cache  Re-download even if cached video exists
   -h, --help          Show this help
 
 Modes (VU_PROFILE): local (default, whisper.cpp + ffmpeg, no keys) | byok
   (xAI STT + Mux frames, needs XAI_API_KEY [+ MUX_TOKEN_ID/SECRET], installs
-  nothing) | grok (agent supplies the X video URL via --direct). See
+  nothing) | grok (agent supplies the video URL via --direct). See
   config/profiles/*.sh. Backends are also settable directly:
   STT_BACKEND=local|xai, FRAME_BACKEND=local|mux.
 Interval and output dir suffix: --interval, DEFAULT_INTERVAL (500ms default), or positional.
@@ -116,10 +118,8 @@ Examples:
   ./video-understanding.sh demo.mov
   ./video-understanding.sh demo.mov --interval 500ms
   XAI_API_KEY=… VU_PROFILE=byok ./video-understanding.sh demo.mov       # no install
-  VU_PROFILE=local ./video-understanding.sh https://x.com/.../status/123 --name my-post
-  ./video-understanding.sh https://x.com/.../status/123 --direct https://video.twimg.com/...mp4 --name my-post --interval 1
-  VU_PROFILE=grok ./video-understanding.sh https://x.com/... --direct <url> --name p
-  ./video-understanding.sh x-post.mp4 --force --name retry --interval 0.25
+  ./video-understanding.sh https://example.com/talk.mp4 --name talk
+  ./video-understanding.sh clip.mp4 --force --name retry --interval 0.25
 
 BYOK keys come from the environment (or a gitignored .env). Never hardcoded.
 EOF
@@ -169,9 +169,6 @@ fi
 : "${WHISPER_LOGPROB_THOLD:=-0.9}"
 : "${VAD_MODEL:=$HOME/.local/opt/whisper.cpp/models/ggml-silero-v6.2.0.bin}"
 
-: "${X_VIDEO_RESOLVER:=xurl}"
-: "${X_DOWNLOAD_METHOD:=curl}"
-: "${X_CACHE_DIR:=$HOME/.cache/video-understanding/x-videos}"
 : "${CACHE_DIR:=$HOME/.cache/video-understanding}"
 : "${TMP_DIR:=/tmp/video-understanding}"
 
@@ -183,78 +180,27 @@ fi
 : "${STT_WORDS_PER_CUE:=10}"       # group xAI words into ~N-word SRT cues
 # Keys come from the environment — NEVER hardcoded: XAI_API_KEY, MUX_TOKEN_ID/SECRET.
 
-mkdir -p "$CACHE_DIR" "$X_CACHE_DIR" "$TMP_DIR"
+mkdir -p "$CACHE_DIR" "$TMP_DIR"
 
-# Handle X URL or ID as input
-if [[ "$VIDEO" =~ ^https?://x\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
-  XREF="$VIDEO"
-  POST_ID=$(echo "$XREF" | sed -n 's/.*status\/\([0-9]*\).*/\1/p; s/^\([0-9]*\)$/\1/p' | head -1)
-  if [[ -z "$POST_ID" ]]; then
-    echo "Could not parse post ID from XREF: $XREF" >&2
-    exit 1
-  fi
-  if [[ -z "$SLUG" ]]; then
-    SLUG="x-post-${POST_ID}"
-  fi
-  if [[ -z "$OUTDIR" ]]; then
-    OUTDIR="${SLUG}${DEFAULT_OUTDIR_SUFFIX}"
-  fi
-  VIDEO_FILE="${X_CACHE_DIR}/${SLUG}.mp4"
-  if [[ -z "$DIRECT_URL" ]]; then
-    if [[ "$X_VIDEO_RESOLVER" == "xurl" ]]; then
-      if command -v xurl >/dev/null 2>&1; then
-        echo ">> Resolving video URL via xurl read $POST_ID (default)..."
-        POST_JSON=$(xurl read "$POST_ID" 2>/dev/null || echo '{}')
-        if [ "$POST_JSON" != "{}" ]; then
-          if command -v node >/dev/null 2>&1; then
-            # Parse xurl JSON with node (no jq dep): recursively collect video
-            # variants, pick the highest-bitrate video.twimg.com mp4.
-            DIRECT_URL=$(printf '%s' "$POST_JSON" | node -e '
-              const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
-              const vs = [];
-              const walk = o => { if (o && typeof o === "object") { if (Array.isArray(o.variants)) vs.push(...o.variants); Object.values(o).forEach(walk); } };
-              walk(d);
-              const best = vs.filter(v => v && v.url && v.url.includes("video.twimg.com") && v.url.endsWith(".mp4"))
-                             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-              if (best) process.stdout.write(best.url);
-            ' 2>/dev/null || true)
-          else
-            echo ">> node not found; cannot parse xurl JSON. Provide --direct <url>"
-            DIRECT_URL=""
-          fi
-          if [ -n "$DIRECT_URL" ]; then
-            echo ">> Resolved via xurl: $DIRECT_URL"
-          else
-            echo ">> xurl succeeded but no mp4 video URL found in JSON"
-          fi
-        else
-          echo ">> xurl read failed (auth needed?). Provide --direct <url>"
-        fi
-      else
-        echo ">> xurl not found; provide --direct <direct twimg mp4 url> (or set X_VIDEO_RESOLVER=grok + supply URL from agent)"
-      fi
-    elif [[ "$X_VIDEO_RESOLVER" == "grok" ]]; then
-      echo ">> Using grok resolver: Grok's built-in X tools (grok cli) find post & supply URL; CLI expects --direct or skill provides."
-    fi
-  fi
-  if [[ -n "$DIRECT_URL" && ( ! -f "$VIDEO_FILE" || "$FORCE_DOWNLOAD" ) ]]; then
-    echo ">> Downloading X video..."
-    curl -L --fail --retry 2 --progress-bar -o "$VIDEO_FILE" "$DIRECT_URL"
-  fi
-  if [[ -n "$DIRECT_URL" && ! -s "$VIDEO_FILE" ]]; then
-    echo "Download failed or empty file: $DIRECT_URL" >&2
-    exit 1
-  fi
-  if [[ ! -f "$VIDEO_FILE" ]]; then
-    if [[ "$X_VIDEO_RESOLVER" == "grok" ]]; then
-      echo "No video file. Grok profile: use Grok's X tools (grok cli) to find post and supply --direct <url>, or let skill handle." >&2
-    else
-      echo "No video file. Provide --direct <direct twimg mp4 url> (or ensure xurl can resolve)." >&2
-    fi
-    exit 1
-  fi
-  VIDEO="$VIDEO_FILE"
-elif [[ "$VIDEO" =~ ^https?:// || -n "$DIRECT_URL" ]]; then
+# Post pages are refused: this tool takes a video file, not a social post. Pulling
+# the video out of someone's post is the platform's call to allow, not ours — X's
+# terms don't, so resolving a post to its CDN mp4 doesn't belong in here. Save the
+# video by means you're licensed to use, then pass the file (or its direct URL).
+if [[ "$VIDEO" =~ ^https?://(x|twitter)\.com/ || "$VIDEO" =~ ^[0-9]+$ ]]; then
+  cat >&2 <<EOF
+error: post links and post IDs are not supported — pass a video file.
+
+This tool analyses a video you already have; it does not pull video out of
+posts. Downloading a post's video is generally restricted by the platform's
+terms of service, so obtaining the file is your call:
+
+  video-understanding /path/to/video.mp4
+  video-understanding https://example.com/video.mp4    # direct video-file URL
+EOF
+  exit 1
+fi
+
+if [[ "$VIDEO" =~ ^https?:// || -n "$DIRECT_URL" ]]; then
   # Generic direct video-file URL (hosted anywhere) — download to cache, treat
   # as a local file. --direct overrides the positional URL.
   SRC_URL="${DIRECT_URL:-$VIDEO}"
