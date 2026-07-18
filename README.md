@@ -40,12 +40,12 @@ cd video-understanding && chmod +x video-understanding.sh
 
 ### Get started — local mode (macOS Apple Silicon, no keys)
 
-Install the deps in one command — [`ask-transcribe-cli`](https://github.com/stevederico/ask-transcribe-cli)
+Install the deps in one command — [`local-ai-cli`](https://github.com/stevederico/local-ai-cli)
 builds whisper.cpp (Metal), symlinks `whisper-cli` into `~/.local/bin`, downloads
 `ggml-large-v3-turbo`, and installs ffmpeg:
 
 ```sh
-git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh
+git clone https://github.com/stevederico/local-ai-cli.git && cd local-ai-cli && bash setup.sh
 # then:
 ./video-understanding.sh ~/clip.mov
 ```

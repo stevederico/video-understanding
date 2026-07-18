@@ -1,13 +1,24 @@
 #!/bin/bash
 # ============================================
 # GROK / AGENT-FOCUSED PROFILE
-# When running under Grok (or similar), the agent supplies a direct video-file URL
-# with --direct. Mechanical stages (ffmpeg + whisper) remain local.
-# Use: VU_PROFILE=grok ./video-understanding.sh --direct <video-url-from-agent>
+# When running under Grok (or similar), the agent handles X interaction via its built-in tools
+# and supplies the video URL with --direct. Mechanical stages (ffmpeg + whisper) remain local.
+# Use: VU_PROFILE=grok ./video-understanding.sh ... --direct <mp4-from-agent>
 # ============================================
 
 : "${VU_PROFILE:=grok}"
 export VU_PROFILE
+
+# ----------------------------------------
+# STAGE: X Sourcing / Download
+# Grok's built-in X tools (the "grok cli" / tools) are used to find posts and provide video URLs.
+# The CLI script does NOT call xurl; it expects --direct or the skill/agent to supply the URL.
+# Download still uses curl from CDN.
+# ----------------------------------------
+: "${X_VIDEO_RESOLVER:=grok}"   # "grok" means agent provides URL via tools/skill
+export X_VIDEO_RESOLVER
+: "${X_DOWNLOAD_METHOD:=curl}"
+export X_DOWNLOAD_METHOD
 
 # ----------------------------------------
 # STAGE: Vision / Frame Extraction

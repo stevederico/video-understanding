@@ -1,12 +1,22 @@
 #!/bin/bash
 # ============================================
 # LOCAL FOCUSED PROFILE
-# All stages use local tools only (ffmpeg + local whisper).
-# No cloud APIs, no external services.
+# All stages use local tools only (xurl for X resolution + curl + local whisper).
+# No cloud APIs, no external services. X resolution is handled by local xurl CLI (or --direct).
 # ============================================
 
 : "${VU_PROFILE:=local}"
 export VU_PROFILE
+
+# ----------------------------------------
+# STAGE: X Sourcing / Download
+# How to find and download videos from X.
+# Default: use local xurl CLI to resolve video URL from post.
+# ----------------------------------------
+: "${X_VIDEO_RESOLVER:=xurl}"   # xurl (local CLI) or direct (manual)
+export X_VIDEO_RESOLVER
+: "${X_DOWNLOAD_METHOD:=curl}"
+export X_DOWNLOAD_METHOD
 
 # ----------------------------------------
 # STAGE: Vision / Frame Extraction
@@ -18,10 +28,9 @@ export FRAME_QUALITY
 export DEFAULT_INTERVAL
 
 # ----------------------------------------
-# STAGE: Transcription (STT) + Frames — both local, no keys
+# STAGE: Transcription (STT)
+# whisper.cpp local settings.
 # ----------------------------------------
-: "${STT_BACKEND:=local}"; export STT_BACKEND      # whisper.cpp
-: "${FRAME_BACKEND:=local}"; export FRAME_BACKEND   # ffmpeg
 : "${VU_MODEL:=large-v3-turbo}"
 export VU_MODEL
 : "${WHISPER_MODEL:=$HOME/.local/opt/whisper.cpp/models/ggml-large-v3-turbo.bin}"

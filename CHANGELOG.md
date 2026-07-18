@@ -1,5 +1,11 @@
 # To-do list
 
+0.22.0
+
+  Align skill with agents tree
+  local-ai-cli install path
+  Allowed-tools and version
+
 0.21.0
 
   Remove X post sourcing: no xurl resolve, no CDN download, no cache

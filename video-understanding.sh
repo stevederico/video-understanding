@@ -251,7 +251,7 @@ if [ "$NEED_FFMPEG" = "1" ]; then
 fi
 # STT deps depend on backend.
 if [ "$STT_BACKEND" = "local" ]; then
-  command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/ask-transcribe-cli.git && cd ask-transcribe-cli && bash install-stt.sh  (or use the byok profile: VU_PROFILE=byok + XAI_API_KEY)" >&2; exit 1; }
+  command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/local-ai-cli.git && cd local-ai-cli && bash setup.sh  (or use the byok profile: VU_PROFILE=byok + XAI_API_KEY)" >&2; exit 1; }
   [ -f "$WHISPER_MODEL" ] || { echo "error: model not found: $WHISPER_MODEL → ~/.local/opt/whisper.cpp/models/download-ggml-model.sh ${VU_MODEL}" >&2; exit 1; }
 elif [ "$STT_BACKEND" = "xai" ]; then
   [ -n "${XAI_API_KEY:-}" ] || { echo "error: STT_BACKEND=xai needs XAI_API_KEY in the environment" >&2; exit 1; }
