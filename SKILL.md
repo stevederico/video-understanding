@@ -3,7 +3,7 @@ name: video-understanding
 author: stevederico
 skills-sh: later
 description: >
-  Turn a video file into a full AI understanding: use video-understanding.sh for frames + transcript, then review as agent to produce understanding.md. Local ffmpeg + whisper. Use when user runs /video-understanding, or says "process this video with full understanding", "get frames and transcript then analyze".
+  Turn a video file into a full AI understanding: use video-understanding.sh for frames + transcript, then review as agent to produce understanding.md. Local ffmpeg + dottie-talk (parakeet) or whisper.cpp. Use when user runs /video-understanding, or says "process this video with full understanding", "get frames and transcript then analyze".
 allowed-tools: Bash(video-understanding:*), Bash(*video-understanding/video-understanding.sh*), Bash(ffmpeg:*), Bash(whisper-cli:*), Bash(dottie-talk:*), Bash(ffprobe:*), Read, Write, Edit, Glob, Grep
 metadata:
   version: "1.1.0"

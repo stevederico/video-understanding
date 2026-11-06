@@ -1,5 +1,9 @@
 # To-do list
 
+0.24.0
+
+  Update skill description
+
 0.23.0
 
   Add dottie-talk backend
