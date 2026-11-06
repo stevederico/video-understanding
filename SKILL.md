@@ -4,7 +4,7 @@ author: stevederico
 skills-sh: later
 description: >
   Turn a video file into a full AI understanding: use video-understanding.sh for frames + transcript, then review as agent to produce understanding.md. Local ffmpeg + whisper. Use when user runs /video-understanding, or says "process this video with full understanding", "get frames and transcript then analyze".
-allowed-tools: Bash(video-understanding:*), Bash(*video-understanding/video-understanding.sh*), Bash(ffmpeg:*), Bash(whisper-cli:*), Bash(ffprobe:*), Read, Write, Edit, Glob, Grep
+allowed-tools: Bash(video-understanding:*), Bash(*video-understanding/video-understanding.sh*), Bash(ffmpeg:*), Bash(whisper-cli:*), Bash(dottie-talk:*), Bash(ffprobe:*), Read, Write, Edit, Glob, Grep
 metadata:
   version: "1.1.0"
 ---
@@ -19,7 +19,7 @@ Stage 1 is mechanical extraction. Stage 2 is the agent analysis. Generic for any
 
 ## Prerequisites (local STT + ffmpeg)
 
-Stage 1 needs **ffmpeg** + **whisper.cpp (`whisper-cli`)** + a ggml model.
+Stage 1 needs **ffmpeg** + a local STT: **[dottie-talk](https://github.com/stevederico/dottie-talk) 0.26+** (parakeet, used automatically when `dottie-talk transcribe --json` works; point `DOTTIE_TALK_BIN` at a checkout if the PATH copy is older) or **whisper.cpp (`whisper-cli`)** + a ggml model.
 
 Install / repair the local stack with **[local-ai-cli](https://github.com/stevederico/local-ai-cli)** (builds whisper.cpp + models, puts tools on PATH):
 
@@ -43,7 +43,7 @@ Use --interval <val> or DEFAULT_INTERVAL. Env/flag override.
 See `config/profiles/local.sh` for the current local-focused setup.
 
 ## Core rules
-- Prefer local extraction: ffmpeg + whisper.cpp (`whisper-cli`).
+- Prefer local extraction: ffmpeg + dottie-talk (parakeet), else whisper.cpp (`whisper-cli`).
 - Never yt-dlp or YouTube links.
 - Use `video-understanding` (on PATH → skill `video-understanding.sh`) for stage 1 (supports --interval 500ms etc).
   Explicit path: `~/.agents/skills/video-understanding/video-understanding.sh`

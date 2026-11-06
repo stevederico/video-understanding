@@ -1,5 +1,11 @@
 # To-do list
 
+0.23.0
+
+  Add dottie-talk backend
+  Auto-pick parakeet STT
+  Add DOTTIE_TALK_BIN
+
 0.22.0
 
   Align skill with agents tree

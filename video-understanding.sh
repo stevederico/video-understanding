@@ -20,8 +20,8 @@
 #   ./video-understanding.sh ~/Movies/demo.mov
 #   ./video-understanding.sh https://example.com/talk.mp4 --interval 500ms
 #
-# STT is local whisper.cpp: whisper-cli must be on PATH and a matching ggml
-# model present (see README for the one-time build + model download).
+# STT is local: dottie-talk (parakeet) when it is on PATH, else whisper.cpp,
+# which needs whisper-cli on PATH and a matching ggml model (see README).
 #
 # Config: VU_PROFILE=local (default) or grok. See config/profiles/
 # Env vars override profile. Local = fully local (whisper + ffmpeg).
@@ -111,7 +111,7 @@ Modes (VU_PROFILE): local (default, whisper.cpp + ffmpeg, no keys) | byok
   (xAI STT + Mux frames, needs XAI_API_KEY [+ MUX_TOKEN_ID/SECRET], installs
   nothing) | grok (agent supplies the video URL via --direct). See
   config/profiles/*.sh. Backends are also settable directly:
-  STT_BACKEND=local|xai, FRAME_BACKEND=local|mux.
+  STT_BACKEND=local|dottie-talk|xai, FRAME_BACKEND=local|mux.
 Interval and output dir suffix: --interval, DEFAULT_INTERVAL (500ms default), or positional.
 
 Examples:
@@ -173,8 +173,16 @@ fi
 : "${TMP_DIR:=/tmp/video-understanding}"
 
 # Pluggable backends. local profile = whisper.cpp + ffmpeg (no keys). byok profile
-# = xAI STT + Mux frames (bring your own keys). Each is independent.
-: "${STT_BACKEND:=local}"          # local (whisper.cpp) | xai
+# = xAI STT + Mux frames (bring your own keys). Each is independent. With no
+# STT_BACKEND set, dottie-talk (local parakeet, word timestamps) is used when
+# DOTTIE_TALK_BIN supports `transcribe --json` (dottie-talk 0.26+), else whisper.cpp.
+: "${DOTTIE_TALK_BIN:=dottie-talk}"
+dottie_talk_ok() {
+  command -v "$DOTTIE_TALK_BIN" >/dev/null && "$DOTTIE_TALK_BIN" help 2>&1 | grep -q -- '--json'
+}
+if [ -z "${STT_BACKEND:-}" ]; then
+  if dottie_talk_ok; then STT_BACKEND=dottie-talk; else STT_BACKEND=local; fi
+fi                                 # local (whisper.cpp) | dottie-talk | xai
 : "${FRAME_BACKEND:=local}"        # local (ffmpeg)      | mux
 : "${XAI_STT_URL:=https://api.x.ai/v1/stt}"   # xAI: POST -F file=@video, returns {text,duration,words[]}
 : "${STT_WORDS_PER_CUE:=10}"       # group xAI words into ~N-word SRT cues
@@ -243,7 +251,7 @@ if [ "$FRAME_EFFECTIVE" = "mux" ] && { [ -z "${MUX_TOKEN_ID:-}" ] || [ -z "${MUX
   FRAME_EFFECTIVE="local"
 fi
 NEED_FFMPEG=0
-[ "$STT_BACKEND" = "local" ] && NEED_FFMPEG=1
+[ "$STT_BACKEND" != "xai" ] && NEED_FFMPEG=1
 [ "$FRAME_EFFECTIVE" = "local" ] && NEED_FFMPEG=1
 if [ "$NEED_FFMPEG" = "1" ]; then
   command -v ffmpeg  >/dev/null || { echo "error: ffmpeg not found → $(need_ffmpeg_hint)  (or go install-free: VU_PROFILE=byok with XAI_API_KEY + MUX_TOKEN_ID/SECRET)" >&2; exit 1; }
@@ -253,11 +261,14 @@ fi
 if [ "$STT_BACKEND" = "local" ]; then
   command -v whisper-cli >/dev/null || { echo "error: whisper-cli not on PATH — install the whole toolchain in one command: git clone https://github.com/stevederico/local-ai-cli.git && cd local-ai-cli && bash setup.sh  (or use the byok profile: VU_PROFILE=byok + XAI_API_KEY)" >&2; exit 1; }
   [ -f "$WHISPER_MODEL" ] || { echo "error: model not found: $WHISPER_MODEL → ~/.local/opt/whisper.cpp/models/download-ggml-model.sh ${VU_MODEL}" >&2; exit 1; }
+elif [ "$STT_BACKEND" = "dottie-talk" ]; then
+  dottie_talk_ok || { echo "error: $DOTTIE_TALK_BIN missing or older than 0.26 (no transcribe --json) — https://github.com/stevederico/dottie-talk, set DOTTIE_TALK_BIN, or STT_BACKEND=local for whisper.cpp" >&2; exit 1; }
+  command -v node >/dev/null || { echo "error: node not found → brew install node" >&2; exit 1; }
 elif [ "$STT_BACKEND" = "xai" ]; then
   [ -n "${XAI_API_KEY:-}" ] || { echo "error: STT_BACKEND=xai needs XAI_API_KEY in the environment" >&2; exit 1; }
   command -v node >/dev/null || { echo "error: node not found (needed to build SRT from xAI words) → brew install node" >&2; exit 1; }
 else
-  echo "error: unknown STT_BACKEND '$STT_BACKEND' (use local|xai)" >&2; exit 1
+  echo "error: unknown STT_BACKEND '$STT_BACKEND' (use local|dottie-talk|xai)" >&2; exit 1
 fi
 [ -f "$VIDEO" ] || { echo "error: no such file: $VIDEO" >&2; exit 1; }
 
@@ -300,6 +311,25 @@ else
   ffmpeg -y -v error -i "$VIDEO" -ac 1 -ar 16000 -vn "$OUTDIR/transcript.wav"
   DUR=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$VIDEO")
   FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nk=1:nw=1 "$VIDEO" | head -1)
+fi
+if [ "$STT_BACKEND" = "dottie-talk" ]; then
+  echo ">> transcribing with dottie-talk (parakeet)…"
+  # --json carries words[] plus phrase-sized segments[] (start/end/text), the
+  # same shape the segments.json step below reads. Build .srt/.txt from it.
+  "$DOTTIE_TALK_BIN" transcribe "$OUTDIR/transcript.wav" --json > "$OUTDIR/transcript.json" \
+    || { echo "error: dottie-talk transcribe failed" >&2; exit 1; }
+  node -e '
+    const fs = require("fs");
+    const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const out = process.argv[2];
+    const fmt = t => { const ms = Math.max(0, Math.round(t * 1000)), p = (n, l = 2) => String(n).padStart(l, "0");
+      return `${p(Math.floor(ms/3600000))}:${p(Math.floor(ms/60000)%60)}:${p(Math.floor(ms/1000)%60)},${p(ms%1000,3)}`; };
+    const cues = d.segments || [];
+    fs.writeFileSync(`${out}.srt`, cues.map((c,i)=>`${i+1}\n${fmt(c.start)} --> ${fmt(c.end)}\n${c.text}\n`).join("\n"));
+    fs.writeFileSync(`${out}.txt`, (d.text || cues.map(c=>c.text).join(" ")).trim() + "\n");
+  ' "$OUTDIR/transcript.json" "$OUTDIR/transcript"
+  rm -f "$OUTDIR/transcript.wav"
+elif [ "$STT_BACKEND" = "local" ]; then
   echo ">> transcribing with whisper.cpp (model=$VU_MODEL)…"
   # DTW word-level alignment for accurate timestamps; preset = model name with
   # '-' → '.' (large-v3-turbo → large.v3.turbo). -ml 60 -sow = readable phrase cues.

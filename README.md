@@ -20,7 +20,7 @@ Two stages:
 
 | mode | transcription | frames | you provide | best for |
 |---|---|---|---|---|
-| **local** (default) | whisper.cpp | ffmpeg | the tools (one-time install; macOS Apple Silicon turnkey) | private, offline, no keys |
+| **local** (default) | [dottie-talk](https://github.com/stevederico/dottie-talk) (parakeet) if installed, else whisper.cpp | ffmpeg | the tools (one-time install; macOS Apple Silicon turnkey) | private, offline, no keys |
 | **BYOK** | xAI STT | Mux | `XAI_API_KEY` + Mux creds — **installs nothing** | any OS, no build |
 
 - **local** = install whisper.cpp + ffmpeg once; runs offline, no keys, no per-use cost.
@@ -161,7 +161,8 @@ on-screen text, demos, and corrections a transcript alone would miss.
 | `VU_LANG` | auto | set e.g. `en` to skip detection |
 | `FRAME_QUALITY` | `3` | ffmpeg `-q:v`, 2 best … 31 worst |
 | `VU_PROFILE` | `local` | `local`, `byok` (xAI STT + Mux), or `grok` (agent supplies `--direct`) |
-| `STT_BACKEND` | `local` | `local` (whisper.cpp) or `xai` (needs `XAI_API_KEY`) |
+| `STT_BACKEND` | auto | `dottie-talk` (parakeet, picked when `DOTTIE_TALK_BIN` supports `transcribe --json`), `local` (whisper.cpp), or `xai` (needs `XAI_API_KEY`) |
+| `DOTTIE_TALK_BIN` | `dottie-talk` | dottie-talk CLI to call (0.26+), e.g. a repo checkout's `cli.js` |
 | `FRAME_BACKEND` | `local` | `local` (ffmpeg) or `mux` (needs `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET`; falls back to local) |
 | `XAI_API_KEY` | — | env/`.env` only, for `STT_BACKEND=xai` |
 | `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` | — | env/`.env` only, for `FRAME_BACKEND=mux` |
